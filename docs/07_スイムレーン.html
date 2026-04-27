@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>インシデント対応 スイムレーン</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+               color: #222; background: #f5f6f8; line-height: 1.55; }
+
+  :root {
+    --phone:   #E65100; --phone-bg:   #FFF3E0;
+    --command: #6A1B9A; --command-bg: #F3E5F5;
+    --server:  #1565C0; --server-bg:  #E3F2FD;
+    --network: #2E7D32; --network-bg: #E8F5E9;
+
+    --ph0-bg: linear-gradient(180deg, #FFF3E0 0%, #FFE0B2 100%);
+    --ph1-bg: linear-gradient(180deg, #FFFDE7 0%, #FFF59D 100%);
+    --ph2-bg: linear-gradient(180deg, #E8F5E9 0%, #C8E6C9 100%);
+
+    --ink: #1a1a1a; --ink-sub: #555; --line: #e0e3e8;
+  }
+
+  header.top {
+    padding: 28px 32px 20px;
+    background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%);
+    color: white;
+  }
+  header.top h1 { font-size: 26px; font-weight: 700; letter-spacing: 0.02em; }
+  header.top p  { font-size: 14px; opacity: 0.95; margin-top: 8px; max-width: 900px; }
+
+  .principles {
+    background: #fff; border-bottom: 1px solid var(--line);
+    padding: 16px 32px; display: flex; gap: 24px; flex-wrap: wrap;
+  }
+  .principles .p {
+    flex: 1; min-width: 240px; padding: 10px 14px;
+    background: #fafbfc; border-left: 4px solid #1976d2; border-radius: 4px;
+  }
+  .principles .p b { display: block; font-size: 13px; color: #0d47a1; margin-bottom: 4px; }
+  .principles .p span { font-size: 12.5px; color: var(--ink-sub); }
+
+  /* Phase arrow */
+  .phase-arrow {
+    padding: 14px 32px 0;
+    display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-sub);
+  }
+  .phase-arrow .step { padding: 5px 14px; border-radius: 14px; font-weight: 600; font-size: 12px; }
+  .phase-arrow .p0 { background: #FFE0B2; color: #E65100; }
+  .phase-arrow .p1 { background: #FFF59D; color: #BF8E00; }
+  .phase-arrow .p2 { background: #C8E6C9; color: #2E7D32; }
+  .phase-arrow .arr { color: #999; font-weight: 700; }
+
+  /* Swimlane grid */
+  .swimlane {
+    padding: 20px 32px 32px;
+    display: grid;
+    grid-template-columns: 150px 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  @media (max-width: 1100px) {
+    .swimlane { grid-template-columns: 120px 1fr 1fr 1fr; gap: 8px; }
+  }
+  @media (max-width: 820px) {
+    .swimlane { grid-template-columns: 100px 1fr; }
+    .swimlane .phase-header.h1, .swimlane .phase-header.h2 { display: none; }
+    .swimlane .cell.c1, .swimlane .cell.c2 { display: none; }
+  }
+
+  .corner { background: transparent; }
+  .phase-header {
+    padding: 12px 16px; border-radius: 8px;
+    font-weight: 700; font-size: 14px; color: #333;
+    display: flex; flex-direction: column; justify-content: center;
+    text-align: center;
+  }
+  .phase-header .ptitle { font-size: 15px; font-weight: 800; }
+  .phase-header .psub { font-size: 11.5px; color: #666; margin-top: 2px; font-weight: 500; }
+  .phase-header.h0 { background: var(--ph0-bg); color: #BF360C; }
+  .phase-header.h1 { background: var(--ph1-bg); color: #9A7B00; }
+  .phase-header.h2 { background: var(--ph2-bg); color: #1B5E20; }
+
+  .lane-label {
+    writing-mode: horizontal-tb;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px; color: white;
+    border-radius: 8px;
+    padding: 20px 12px;
+    text-align: center;
+    position: sticky; left: 0;
+  }
+  .lane-label.phone   { background: var(--phone); }
+  .lane-label.command { background: var(--command); }
+  .lane-label.server  { background: var(--server); }
+  .lane-label.network { background: var(--network); }
+
+  .cell {
+    background: white; border-radius: 8px; padding: 14px 14px 12px;
+    border-top: 3px solid transparent;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    font-size: 12.5px;
+    min-height: 180px;
+  }
+  .cell.phone   { border-top-color: var(--phone); }
+  .cell.command { border-top-color: var(--command); }
+  .cell.server  { border-top-color: var(--server); }
+  .cell.network { border-top-color: var(--network); }
+
+  .cell .h {
+    font-size: 12px; font-weight: 700; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .cell .h .tag {
+    padding: 2px 8px; border-radius: 10px; font-size: 10.5px; font-weight: 600;
+    background: #eef2f6; color: #555;
+  }
+  .cell ol { list-style: none; padding: 0; counter-reset: step; }
+  .cell ol li {
+    position: relative; padding-left: 22px; padding-top: 4px; padding-bottom: 4px;
+    border-bottom: 1px dashed #f0f1f3;
+    font-size: 12.5px; color: #2b2b2b;
+  }
+  .cell ol li:last-child { border-bottom: none; }
+  .cell ol li::before {
+    content: counter(step);
+    counter-increment: step;
+    position: absolute; left: 0; top: 5px;
+    width: 16px; height: 16px; border-radius: 50%;
+    font-size: 10px; font-weight: 700; color: white;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cell.phone   ol li::before { background: var(--phone); }
+  .cell.command ol li::before { background: var(--command); }
+  .cell.server  ol li::before { background: var(--server); }
+  .cell.network ol li::before { background: var(--network); }
+
+  .cell .note {
+    background: #fff8e1; border-left: 3px solid #f9a825;
+    padding: 6px 8px; margin-top: 8px; border-radius: 3px;
+    font-size: 11.5px; color: #5d4e00;
+  }
+  .cell .hand {
+    margin-top: 8px; padding: 5px 8px; background: #f5f5f5;
+    border-radius: 3px; font-size: 11px; color: #666;
+  }
+  .cell .hand b { color: #333; }
+  .cell .ref { font-size: 11px; color: #1565C0; margin-top: 6px; }
+
+  /* Decision points */
+  .decisions {
+    margin: 0 32px 32px; padding: 18px 20px;
+    background: white; border-radius: 8px;
+    border-left: 4px solid #d32f2f;
+  }
+  .decisions h2 { font-size: 16px; color: #b71c1c; margin-bottom: 10px; }
+  .decisions .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+  .decisions .dp {
+    padding: 10px 12px; background: #fff3f3; border-radius: 4px;
+    font-size: 12.5px; border-left: 3px solid #d32f2f;
+  }
+  .decisions .dp b { color: #b71c1c; display: block; margin-bottom: 4px; font-size: 12.5px; }
+
+  /* NG list */
+  .ng {
+    margin: 0 32px 32px; padding: 18px 20px;
+    background: white; border-radius: 8px;
+    border-left: 4px solid #424242;
+  }
+  .ng h2 { font-size: 16px; color: #212121; margin-bottom: 10px; }
+  .ng ul { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; }
+  .ng li {
+    padding: 8px 10px; background: #fafafa; border-radius: 4px;
+    font-size: 12.5px; border-left: 3px solid #616161;
+  }
+
+  /* Legend */
+  .legend {
+    margin: 0 32px 24px; padding: 16px 20px;
+    background: white; border-radius: 8px; border: 1px solid var(--line);
+  }
+  .legend h2 { font-size: 15px; color: #0d47a1; margin-bottom: 10px; }
+  .legend .docs { display: flex; gap: 10px; flex-wrap: wrap; }
+  .legend .doc {
+    padding: 8px 12px; background: #e3f2fd; border-radius: 4px;
+    font-size: 12px; font-weight: 600; color: #0d47a1;
+  }
+  .legend .doc.hint { background: #f5f5f5; color: #555; font-weight: 500; }
+
+  footer {
+    padding: 20px 32px 32px; font-size: 12px; color: #666; text-align: center;
+  }
+
+  /* Print adjustments */
+  @media print {
+    body { background: white; }
+    header.top { background: #0d47a1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .swimlane { grid-template-columns: 90px 1fr 1fr 1fr !important; gap: 4px; padding: 10px; }
+    .cell { min-height: auto; page-break-inside: avoid; }
+    .phase-arrow { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>インシデント対応 スイムレーン</h1>
+  <p>
+    一般インシデント（DDoS・侵害・情報漏えい等、種別問わず）の <b>初動 → 中間 → 終了</b> の流れを
+    <b>4レーン並行</b>（電話対応・指揮・サーバー・ネットワーク）で時系列に可視化。
+    電話が鳴った直後から完了報告までの各レーンの動きを、01／02／02.1／03／04／05／06 を横串で通した1枚に集約。
+  </p>
+</header>
+
+<section class="principles">
+  <div class="p">
+    <b>原則1：観測点 ≠ 攻撃対象 ≠ 被害箇所</b>
+    <span>症状が見えた場所、パケットが来ている場所、枯渇している場所は別物。3つを分けて考える。</span>
+  </div>
+  <div class="p">
+    <b>原則2：事実と事象を分ける</b>
+    <span>「遅い」「見えない」は主観。時刻・URL・IP・数字で記録する。</span>
+  </div>
+  <div class="p">
+    <b>原則3：連絡線を一本化</b>
+    <span>顧客への回答窓口は電話対応係のみ。技術担当から直接返答させない。</span>
+  </div>
+  <div class="p">
+    <b>原則4：封じ込め &gt; 復旧</b>
+    <span>経路を塞ぐ前に復旧しない。復旧 → 再発の玉突きを避ける。</span>
+  </div>
+</section>
+
+<div class="phase-arrow">
+  <span class="step p0">初動 0〜15分</span>
+  <span class="arr">▶</span>
+  <span class="step p1">中間 15〜60分</span>
+  <span class="arr">▶</span>
+  <span class="step p2">終了 60分〜</span>
+  <span style="margin-left: auto; font-size: 11px;">※ 時間は目安。事案規模で伸縮する。</span>
+</div>
+
+<section class="swimlane">
+  <!-- Header row -->
+  <div class="corner"></div>
+  <div class="phase-header h0">
+    <div class="ptitle">初動</div>
+    <div class="psub">受電 → 切り分け → 方針決定（0〜15分）</div>
+  </div>
+  <div class="phase-header h1">
+    <div class="ptitle">中間</div>
+    <div class="psub">封じ込め → 調査 → 対応実施（15〜60分）</div>
+  </div>
+  <div class="phase-header h2">
+    <div class="ptitle">終了</div>
+    <div class="psub">復旧確認 → 報告 → クローズ（60分〜）</div>
+  </div>
+
+  <!-- 電話対応レーン -->
+  <div class="lane-label phone">電話対応</div>
+  <div class="cell phone c0">
+    <div class="h">Phase 0 受電 <span class="tag">01</span></div>
+    <ol>
+      <li>共通冒頭（「お電話ありがとうございます」）</li>
+      <li>冒頭3項目：所属・氏名・折り返し先を復唱して確保</li>
+      <li>パターン判定：A苦情 / B報告 / C経営層 / D外部通報</li>
+      <li>相手に「触らない・電源切らない・再起動しない」を依頼</li>
+      <li>折り返し時刻を約束（10〜15分以内）</li>
+      <li>受電シートを指揮・記録係に即共有</li>
+    </ol>
+    <div class="note">NG：原因断定・安心づけ（「ウイルスです」「大丈夫です」）を言わない。</div>
+    <div class="ref">→ 01_受電ヒアリングシート</div>
+  </div>
+  <div class="cell phone c1">
+    <div class="h">Phase 1-2 中間報告 <span class="tag">04</span></div>
+    <ol>
+      <li>15〜30分ごとに顧客担当へ中間連絡（進捗・見通し）</li>
+      <li>経営層からの電話応対（事実・対応中・見通し・判断事項の4点）</li>
+      <li>相手からの追加情報（新症状・目撃）を取り込み指揮へ</li>
+      <li>他ユーザへの広報要否を指揮に確認</li>
+      <li>2件目以降の受電（陽動の可能性を意識して受ける）</li>
+      <li>連絡時刻・相手・内容は1件1行で記録</li>
+    </ol>
+    <div class="hand"><b>連動：</b>指揮の「報告頻度合意」に従い発信。技術者を直接つながない。</div>
+  </div>
+  <div class="cell phone c2">
+    <div class="h">Phase 3-5 完了報告 <span class="tag">04</span></div>
+    <ol>
+      <li>完了判定チェックリストを指揮と確認</li>
+      <li>相手別にテンプレ選択：経営層 / 担当 / ユーザ / 外部</li>
+      <li>「完了」と「一次対応完了」を明確に区別して伝える</li>
+      <li>電話後、メールで裏付け記録を送付</li>
+      <li>次回連絡時刻（継続対応があれば）を約束</li>
+      <li>連絡ログを1箇所にまとめ指揮へ提出</li>
+    </ol>
+    <div class="note">NG：「もう絶対に大丈夫」「完全に分かりました」と断定しない。</div>
+  </div>
+
+  <!-- 指揮レーン -->
+  <div class="lane-label command">指揮</div>
+  <div class="cell command c0">
+    <div class="h">Phase 0-1 統制開始 <span class="tag">02 / 05</span></div>
+    <ol>
+      <li>チーム招集（4人全員が事案を把握）</li>
+      <li>事案ID採番（例 INC-20260420-001）</li>
+      <li>ホワイトボードで時系列記録開始</li>
+      <li>02 引き継ぎテンプレで事実と申告を整理</li>
+      <li>緊急度（高/中/低）・優先度（P1/P2/P3）判定</li>
+      <li>各レーンへ「何を・いつまでに・どこまで」の具体依頼</li>
+      <li>中間報告タイミング合意（例 15分後）</li>
+    </ol>
+    <div class="ref">→ 02_引き継ぎテンプレート / 05_全体チェックシート</div>
+  </div>
+  <div class="cell command c1">
+    <div class="h">Phase 2-3 判断 <span class="tag">03 / 06</span></div>
+    <ol>
+      <li>両技術レーンの仮説を統合しシナリオ特定</li>
+      <li>03 プレイブックの該当シナリオを技術へ渡す</li>
+      <li>封じ込め実施を<b>承認</b>（範囲・タイミング）</li>
+      <li>陽動の可能性を常時監視（別ログ並行確認）</li>
+      <li>複数インシデント管理（優先度の再評価）</li>
+      <li>定時レビュー（30分経過時点で一度集合）</li>
+      <li>完了見通し時刻を各レーンから集約</li>
+    </ol>
+    <div class="hand"><b>連動：</b>封じ込めは指揮承認が必須。技術の独断で止めない。</div>
+  </div>
+  <div class="cell command c2">
+    <div class="h">Phase 4-5 クローズ <span class="tag">05</span></div>
+    <ol>
+      <li>05 全体チェックシートで完了判定を確認</li>
+      <li>継続タスク（再発防止・監視強化）を整理</li>
+      <li>事案クローズ宣言 or「一次対応完了」宣言を明確に</li>
+      <li>対応記録を1箇所にまとめ（時系列・判断・根拠）</li>
+      <li>KPT振り返り（時間があれば実施）</li>
+      <li>体制戻し（次事案に備えてローテーション）</li>
+    </ol>
+    <div class="note">NG：完了判定7項目（05参照）が埋まる前に「完了」と言わない。</div>
+  </div>
+
+  <!-- サーバーレーン -->
+  <div class="lane-label server">サーバー</div>
+  <div class="cell server c0">
+    <div class="h">Phase 0-1 切り分け <span class="tag">02.1</span></div>
+    <ol>
+      <li>再現確認：curl / dig / ping / nc で失敗レイヤ特定</li>
+      <li>環境把握：OS・ディストリ・Docker・クラウド判別</li>
+      <li>構成把握：自ホストの役割と他サーバ依存関係</li>
+      <li>ログ確認：access / error / syslog（距離を取って読む）</li>
+      <li>対応前にログ・画面の<b>スクリーンショット保全</b></li>
+      <li>事実 vs 相手申告を分けて仮説を立てる</li>
+      <li>仮説（DDoS疑い/侵害疑い/別原因）を指揮へ報告</li>
+    </ol>
+    <div class="note">NG：再現確認なしで iptables DROP を打たない。</div>
+    <div class="ref">→ 02.1_先にやること</div>
+  </div>
+  <div class="cell server c1">
+    <div class="h">Phase 2-3 封じ込め・調査 <span class="tag">03 / 06</span></div>
+    <ol>
+      <li>指揮承認後に封じ込め実施（アカウントロック・サービス停止・iptables等）</li>
+      <li>詳細調査：侵入痕跡・不審プロセス・改ざん痕跡</li>
+      <li>認証ログ監査・アクセスログ深掘り</li>
+      <li>バックアップ状態確認（復旧可否）</li>
+      <li>復旧方針を指揮へ提示（完全復旧/一部停止/代替）</li>
+      <li>調査結果を02引き継ぎテンプレの結果欄へ記入</li>
+      <li>陽動の痕跡（別ホストのログ異変）も並行監視</li>
+    </ol>
+    <div class="hand"><b>連動：</b>NWと時系列を同期（ログ時刻のズレに注意）。</div>
+  </div>
+  <div class="cell server c2">
+    <div class="h">Phase 4-5 復旧・記録 <span class="tag">03 / 04</span></div>
+    <ol>
+      <li>指揮承認のもと復旧作業実施</li>
+      <li>動作確認（正常稼働・ログ健全性）</li>
+      <li>監視強化設定（再侵害・再発の早期検知）</li>
+      <li>時系列ログ整理（報告書に使える形式）</li>
+      <li>残タスク（未解決項目）を指揮へ申告</li>
+      <li>対応内容を04完了報告の「実施した対応」へ渡す</li>
+    </ol>
+    <div class="note">NG：経路を塞がずに復元しない（即再感染）。</div>
+  </div>
+
+  <!-- ネットワークレーン -->
+  <div class="lane-label network">ネット<br>ワーク</div>
+  <div class="cell network c0">
+    <div class="h">Phase 0-1 観測 <span class="tag">02.1</span></div>
+    <ol>
+      <li>対象セグメント・VLAN を特定</li>
+      <li>機器状態：YAMAHA `show environment` / Cisco `show processes cpu`</li>
+      <li>全体トラフィック確認（通常比較）</li>
+      <li>外部到達性・他セグメントとの疎通</li>
+      <li>機器ログ取得（`show log`、syslog）</li>
+      <li>配布構成図と実機のズレ確認（実機優先）</li>
+      <li>仮説（攻撃/通常増/別原因）を指揮へ報告</li>
+    </ol>
+    <div class="note">NG：構成図を鵜呑みにしない。実機から取った情報で自作する。</div>
+  </div>
+  <div class="cell network c1">
+    <div class="h">Phase 2-3 封じ込め <span class="tag">03 / 06</span></div>
+    <ol>
+      <li>投入前に `show config` → 既存フィルタ番号をメモ</li>
+      <li><b>ロールバックコマンドを先に用意</b>してから投入</li>
+      <li>YAMAHA: `ip filter` 追加（既存番号も含めて適用）</li>
+      <li>Cisco: 名前付きACL で deny 追加</li>
+      <li>AWS: NACL / SG / WAF Rate-Based Rule</li>
+      <li>投入後に効果確認（`show status ip filter` / CloudWatch）</li>
+      <li>他セグメント拡大・陽動トラフィックを並行監視</li>
+    </ol>
+    <div class="hand"><b>連動：</b>サーバと同じ時刻基準でログを残す（NTP 確認）。</div>
+  </div>
+  <div class="cell network c2">
+    <div class="h">Phase 4-5 棚卸し <span class="tag">05</span></div>
+    <ol>
+      <li>復旧後の接続確認（顧客側・他セグメント）</li>
+      <li>投入フィルタの棚卸し（不要なら外す / 残すものは記録）</li>
+      <li>監視アラート設定の継続要否を指揮と合意</li>
+      <li>構成変更の記録（いつ・誰が・何を）</li>
+      <li>ロールバック可能状態を確認</li>
+      <li>構成図・運用ドキュメントの更新提案</li>
+    </ol>
+    <div class="note">NG：投入したルールを記録せず「終わり」にしない。</div>
+  </div>
+</section>
+
+<section class="decisions">
+  <h2>★ 重要判断ポイント（いずれも指揮が最終決定）</h2>
+  <div class="grid">
+    <div class="dp"><b>DP1：受電直後（0〜5分）</b>DDoSと決め打ちせず、02.1の切り分け手順を踏むか</div>
+    <div class="dp"><b>DP2：切り分け後（10〜15分）</b>インシデント種別の仮説確定。03のどのシナリオに進むか</div>
+    <div class="dp"><b>DP3：封じ込め実施前（15〜25分）</b>サービス停止を伴うか。顧客への事前連絡が必要か</div>
+    <div class="dp"><b>DP4：中間時点（30分）</b>陽動の可能性を再評価。他ログ異変の有無を確認</div>
+    <div class="dp"><b>DP5：復旧前</b>経路（侵入経路・攻撃経路）が塞がっているか再確認</div>
+    <div class="dp"><b>DP6：完了宣言前</b>「完了」か「一次対応完了」か。継続監視が必要か</div>
+  </div>
+</section>
+
+<section class="ng">
+  <h2>全レーン共通 NG 行動</h2>
+  <ul>
+    <li>事実と事象（主観）を混同したまま技術判断</li>
+    <li>受電時に折り返し先を聞かずに切る</li>
+    <li>時刻を「さっき」「いま」で済ませる</li>
+    <li>技術担当が顧客に直接返答（連絡線の二重化）</li>
+    <li>封じ込め前に復旧開始して再発させる</li>
+    <li>単一サーバだけ見て横断確認を怠る</li>
+    <li>陽動の可能性を忘れて1件に全員集中</li>
+    <li>審査員・大学側IPレンジを含む遮断</li>
+    <li>投入コマンドにロールバック手順を用意しない</li>
+    <li>「止まった」=「防げた」と誤認して完了宣言</li>
+  </ul>
+</section>
+
+<section class="legend">
+  <h2>このフローで参照する文書</h2>
+  <div class="docs">
+    <div class="doc">01 受電ヒアリングシート</div>
+    <div class="doc">02 技術担当引き継ぎテンプレート</div>
+    <div class="doc">02.1 先にやること</div>
+    <div class="doc">03 シナリオ別対応プレイブック</div>
+    <div class="doc">04 完了報告テンプレート</div>
+    <div class="doc">05 全体チェックシート</div>
+    <div class="doc">06 DDoS対応詳細（該当時）</div>
+    <div class="doc hint">00 目次</div>
+  </div>
+</section>
+
+<footer>
+  4レーン並行スイムレーン / 一般インシデント想定 / Team 用ダッシュボード（印刷可）
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>インシデント判定アキネーター</title>
+<style>
+  :root{
+    --bg:#0B1220; --card:#111a2e; --ink:#E8ECF5; --muted:#9aa6c0;
+    --accent:#7aa8ff; --ok:#5CCB9A; --warn:#FF9A3D; --bad:#ff6b6b;
+    --border:#23304d;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.65}
+  .topbar{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border)}
+  .topbar a{color:var(--muted);text-decoration:none;font-size:13px}
+  .topbar a:hover{color:var(--ink)}
+  .topbar .pill{margin-left:auto;font-size:12px;letter-spacing:.08em;color:var(--muted);
+    border:1px solid var(--border);padding:4px 10px;border-radius:999px}
+  header.hero{padding:40px 24px 8px;text-align:center}
+  header.hero h1{margin:0;font-size:28px;letter-spacing:.03em}
+  header.hero p{margin:8px 0 0;color:var(--muted);font-size:14px}
+  main{max-width:760px;margin:0 auto;padding:24px 20px 60px}
+  .breadcrumbs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+  .bc{font-size:11px;color:var(--muted);border:1px solid var(--border);
+    padding:3px 9px;border-radius:999px;background:#0f1730}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:28px 24px;min-height:220px}
+  .q{font-size:20px;margin:0 0 4px;font-weight:700}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+  .choices{display:grid;gap:10px}
+  button.choice{appearance:none;cursor:pointer;text-align:left;
+    background:#0f1a36;border:1px solid var(--border);color:var(--ink);
+    padding:16px 18px;border-radius:12px;font-size:15px;line-height:1.5;
+    transition:border-color .15s,transform .1s}
+  button.choice:hover{border-color:var(--accent)}
+  button.choice:active{transform:scale(.99)}
+  .tag{display:inline-block;font-size:11px;letter-spacing:.08em;margin-right:8px;
+    padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+  .actions{margin-top:18px;display:flex;gap:10px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--border);background:var(--card);color:var(--ink);
+    padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;text-decoration:none}
+  .btn:hover{border-color:var(--accent)}
+  .result-hdr{display:flex;gap:12px;align-items:center;margin-bottom:8px}
+  .result-hdr .badge{font-size:12px;padding:4px 10px;border-radius:999px;
+    background:#1b2c54;border:1px solid #34507d;color:#b3cdff}
+  .result h2{margin:4px 0 0;font-size:22px}
+  .result .why{color:var(--muted);font-size:13px;margin-top:4px}
+  .blocks{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+  .block{background:#0f1a36;border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .block h4{margin:0 0 6px;font-size:13px;letter-spacing:.08em;color:var(--muted)}
+  .block ul{margin:0;padding-left:18px;font-size:13.5px}
+  .block ul li{margin:4px 0}
+  .block a{color:#cfe0ff}
+  .result .next{margin-top:18px;padding:14px 16px;background:#14193a;
+    border-left:3px solid #B58BFF;border-radius:8px;color:#d9d3ff;font-size:13.5px}
+  @media (max-width:640px){.blocks{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="08_ハブ.html">← ハブ</a>
+  <a href="09_初動_0-15分.html">初動</a>
+  <a href="10_中間_15-60分.html">中間</a>
+  <a href="11_終了_60分以降.html">終了</a>
+  <span class="pill">TRIAGE · v1</span>
+</div>
+
+<header class="hero">
+  <h1>インシデント判定アキネーター</h1>
+  <p>Yes/No で質問に答えると、シナリオ番号と参照ファイルに着地します。</p>
+</header>
+
+<main>
+  <div id="breadcrumbs" class="breadcrumbs"></div>
+  <div id="stage" class="card"></div>
+  <div class="actions">
+    <button class="btn" id="back" onclick="back()">← 戻る</button>
+    <button class="btn" onclick="reset()">最初から</button>
+    <a class="btn" href="03_シナリオ別対応プレイブック.md">03 プレイブック (md)</a>
+  </div>
+</main>
+
+<script>
+  // 決定木: 各ノードは q(質問) と choices(次ノード), または result
+  const TREE = {
+    root: {
+      q: "通報の中心症状は?",
+      sub: "相手の言葉で一番強く言われたことを1つ選ぶ",
+      choices: [
+        { label:"つながらない / 遅い / 落ちている", next:"slow" },
+        { label:"画面の内容が変 / 改ざんされた", next:"deface" },
+        { label:"身代金メッセージ / ファイルが開けない", next:"ransom" },
+        { label:"不審なメールを受け取った / 送られた", next:"mail" },
+        { label:"情報が漏れた疑い", next:"leak" },
+        { label:"ログインされた / 不正利用の通知", next:"account" },
+      ]
+    },
+
+    // ---- 遅い / つながらない系 ----
+    slow: {
+      q: "症状は全ユーザに出ている?",
+      sub: "1人だけ / 一部 / 全員 のどれに近いか",
+      choices: [
+        { label:"全員に出ている", next:"slow_all" },
+        { label:"一部 or 特定条件のみ", next:"slow_partial" },
+      ]
+    },
+    slow_all: {
+      q: "外向け回線や FW のセッション数が平常の倍以上?",
+      sub: "NW レーンで観測済みの数値を根拠に",
+      choices: [
+        { label:"倍以上に急増している", next:"ddos_type" },
+        { label:"普段とそう変わらない", next:"infra_layer" },
+      ]
+    },
+    slow_partial: {
+      q: "特定の機能 / ページ / ユーザ群に限定される?",
+      sub: "例: 決済だけ遅い、ログインだけエラー",
+      choices: [
+        { label:"特定の機能だけ遅い", result:"app_backend" },
+        { label:"特定ユーザだけ遅い", result:"client_local" },
+      ]
+    },
+    ddos_type: {
+      q: "どの層の異常が最も大きい?",
+      sub: "⓪速見カードのしきい値を思い出す",
+      choices: [
+        { label:"SYN-RECV が 100 超 / 急増", result:"ddos_syn" },
+        { label:"HTTP リクエストが急増 (GET/POST)", result:"ddos_http" },
+        { label:"UDP / パケット数だけが極端に多い", result:"ddos_volumetric" },
+        { label:"接続は維持されたまま応答だけ遅い", result:"ddos_slow" },
+      ]
+    },
+    infra_layer: {
+      q: "名前解決 (DNS) が遅い or 失敗?",
+      choices: [
+        { label:"dig が遅い / 応答無い", result:"dns" },
+        { label:"DNS は正常", next:"infra_layer2" },
+      ]
+    },
+    infra_layer2: {
+      q: "バックエンド (DB / キャッシュ / 外部 API) のどれかが詰まっている?",
+      choices: [
+        { label:"DB / キャッシュが詰まっている", result:"db_stall" },
+        { label:"外部 API のタイムアウトが多い", result:"external_api" },
+        { label:"証明書のエラーが出ている", result:"tls" },
+        { label:"上記どれでもない", result:"unknown_perf" },
+      ]
+    },
+
+    // ---- 改ざん ----
+    deface: {
+      q: "改ざんは Web サイトの表示?",
+      choices: [
+        { label:"トップページや特定ページの見た目が変", result:"web_deface" },
+        { label:"WordPress の管理画面経由で改変された痕跡", result:"wp_deface" },
+        { label:"データベースの中身が書き換わっている", result:"data_tamper" },
+      ]
+    },
+
+    // ---- ランサム ----
+    ransom: {
+      q: "影響範囲は?",
+      choices: [
+        { label:"1台の端末 / サーバだけ", result:"ransom_local" },
+        { label:"共有ストレージ / 複数台に広がっている", result:"ransom_spread" },
+      ]
+    },
+
+    // ---- メール ----
+    mail: {
+      q: "向きは?",
+      choices: [
+        { label:"社外から社内に届いた (フィッシング疑い)", result:"phishing_in" },
+        { label:"社内アカウントから社外に送られている", result:"phishing_out" },
+      ]
+    },
+
+    // ---- 漏洩 ----
+    leak: {
+      q: "漏洩の一次情報は?",
+      choices: [
+        { label:"外部通報 (公開サイト / 第三者指摘)", result:"leak_external" },
+        { label:"ログや監視で検知", result:"leak_detected" },
+      ]
+    },
+
+    // ---- アカウント不正 ----
+    account: {
+      q: "対象は?",
+      choices: [
+        { label:"管理者アカウント", result:"acct_admin" },
+        { label:"一般ユーザ", result:"acct_user" },
+      ]
+    },
+
+    // ================= 結果 =================
+    results: {
+      ddos_syn:   {title:"DDoS (SYN Flood)", tag:"シナリオ4", scenario:"03#4 / 06 §1,§2,§4", prob:"本大会 S ランク", why:"SYN-RECV 急増は SYN Flood の代表症状。",
+        next:["02.1 でもう一度「被害サーバ」と「観測点」を区別","NW レーンで ACL/Rate-Based ルールを追加 (上書き禁止)","サーバ側は syncookies/backlog を確認"]},
+      ddos_http:  {title:"DDoS (HTTP Flood)", tag:"シナリオ4", scenario:"03#4 / 06 §1,§3", prob:"本大会 A ランク", why:"HTTP 層の急増。L4 遮断が効きにくいので WAF/rate-limit 優先。",
+        next:["URL / UA / ソース IP の偏りを 1 つに絞る","WAF レート制限 or Nginx limit_req","誤遮断監視 (正常ユーザの 4xx 率)"]},
+      ddos_volumetric:{title:"DDoS (UDP / Volumetric)", tag:"シナリオ4", scenario:"03#4 / 06 §5", prob:"B ランク", why:"パケット数先行の症状。上流での吸収が中心。",
+        next:["回線側/AWS Shield の状態を確認","不要な UDP ポートを閉じる","上流 ISP/クラウドに連絡を検討"]},
+      ddos_slow:  {title:"DDoS (Slow HTTP / Slowloris)", tag:"シナリオ4", scenario:"03#4 / 06 §3 (低帯域型)", prob:"A ランク", why:"接続保持型。帯域もリクエスト数も目立たない。",
+        next:["httpd の同時接続上限/タイムアウト設定を確認","mod_reqtimeout / limit_conn","別サーバの取り込み先が詰まっていないかも確認"]},
+      dns:        {title:"DNS 起因の障害", tag:"インフラ層", scenario:"02.1 §ログ確認 / 03 (該当なしの場合は汎用)", prob:"B ランク", why:"「遅い」の正体が名前解決であることは多い。",
+        next:["社内外のリゾルバを切り替えて切り分け","権威 DNS / キャッシュ DNS の死活","TTL・ゾーン転送の状況を確認"]},
+      db_stall:   {title:"DB / バックエンド詰まり", tag:"非攻撃障害", scenario:"02.1 §ログ確認", prob:"S ランク (DDoSと誤判定しやすい)", why:"「サーバが重い」の1位原因は DB ロック/スロークエリ。",
+        next:["slow query / ロック待ちを確認","接続プール上限","最近のリリース差分を疑う"]},
+      external_api:{title:"外部 API タイムアウト", tag:"非攻撃障害", scenario:"02.1 §ログ確認", prob:"A ランク", why:"外部依存が原因だと観測点のサーバは正常に見える。",
+        next:["外部 API のステータスページ確認","タイムアウト/リトライ設定","サーキットブレーカ投入"]},
+      tls:        {title:"証明書 / TLS 障害", tag:"非攻撃障害", scenario:"02.1 §ログ確認", prob:"B ランク", why:"有効期限・中間証明書・SNI のいずれかで確率的に再現する。",
+        next:["openssl s_client -connect で確認","CA 中間証明書チェーン","サーバ時刻ズレ"]},
+      unknown_perf:{title:"原因未特定の性能障害", tag:"汎用", scenario:"02.1 を再実施", prob:"—", why:"判定には材料不足。観測点を増やして再計測。",
+        next:["NW/サーバ/アプリの3点で同時刻の値を取り直す","閾値ベースで1つずつ潰す"]},
+
+      app_backend:{title:"アプリ/バックエンド障害", tag:"非攻撃障害", scenario:"03 (非シナリオ) / 02.1", prob:"A ランク", why:"特定機能だけ遅いはアプリ層典型。",
+        next:["直近リリース差分","ログのスタックトレース","依存サービス健康状態"]},
+      client_local:{title:"特定クライアント側問題", tag:"個別案件", scenario:"01 で追加ヒアリング", prob:"C ランク", why:"ネットワーク環境 / キャッシュ / デバイス。",
+        next:["別端末/別網で再現しないか","ブラウザキャッシュ","プロキシ設定"]},
+
+      web_deface: {title:"Web サイト改ざん", tag:"シナリオ7", scenario:"03#7", prob:"B ランク", why:"見た目の変化は改ざん/DNS 切替/キャッシュ汚染のいずれか。",
+        next:["ファイル mtime/diff","アクセスログの不審 POST","一旦メンテ画面へ切替"]},
+      wp_deface:  {title:"WordPress 改ざん", tag:"シナリオ2", scenario:"03#2", prob:"A ランク", why:"CMS の管理画面経由は頻出パターン。",
+        next:["管理者パスワード・2FA","プラグイン差分","wp-config / .htaccess チェック"]},
+      data_tamper:{title:"データベース改ざん / 情報改変", tag:"シナリオ6派生", scenario:"03#6", prob:"C ランク", why:"直接書換は侵入後の活動。証拠保全優先。",
+        next:["DB 書込み監査ログ","バックアップとの差分","認証ログとの時刻相関"]},
+
+      ransom_local: {title:"ランサム (限定)", tag:"シナリオ3", scenario:"03#3", prob:"B ランク", why:"1 台で留まっているなら切り離しが最優先。",
+        next:["該当機器を NW から物理隔離","他台への横展開痕跡確認","身代金には応じない"]},
+      ransom_spread:{title:"ランサム (拡散中)", tag:"シナリオ3", scenario:"03#3", prob:"A ランク", why:"横展開中は時間との戦い。",
+        next:["共有ストレージ/認証基盤の隔離","管理者権限の一時停止","バックアップの論理切断"]},
+
+      phishing_in: {title:"フィッシング受信", tag:"シナリオ1", scenario:"03#1", prob:"S ランク", why:"本大会の定番。受電対応が直結。",
+        next:["メールヘッダ保全","送信元ドメイン・リンク検査","全員展開前にユーザ教育連絡"]},
+      phishing_out:{title:"なりすまし送信 / 乗っ取り", tag:"シナリオ8", scenario:"03#8", prob:"A ランク", why:"送信側になったら業務影響が大きい。",
+        next:["当該アカウント即停止","SMTP 認証/IP レピュテーション","送信ログを遡る"]},
+
+      leak_external:{title:"情報漏洩 (外部通報)", tag:"シナリオ6", scenario:"03#6", prob:"B ランク", why:"外部通報は温度が高い。連絡線を指揮で一本化。",
+        next:["通報内容の1次保存","該当データ/経路の仮説","外部向けコメントのドラフト"]},
+      leak_detected:{title:"情報漏洩疑い (内部検知)", tag:"シナリオ6", scenario:"03#6", prob:"C ランク", why:"誤検知も多い。事実と申告を分ける。",
+        next:["アラート根拠のログ","該当アカウントの直近操作","影響範囲の仮見積"]},
+
+      acct_admin:{title:"管理者アカウント不正アクセス疑い", tag:"シナリオ6派生", scenario:"03#6 / 03#8", prob:"A ランク", why:"最優先で止める対象。",
+        next:["該当管理者アカウント凍結","ログイン元 IP / 端末の特定","他管理者アカウントも棚卸"]},
+      acct_user: {title:"一般ユーザ不正アクセス疑い", tag:"シナリオ8派生", scenario:"03#8", prob:"B ランク", why:"拡散の入口になりやすい。",
+        next:["該当ユーザのセッション破棄 / パス再設定","送受信メール・ファイル共有履歴","同一端末の他アカウント確認"]},
+    }
+  };
+
+  const state = { path: ["root"] };
+  const stage = document.getElementById('stage');
+  const crumbs = document.getElementById('breadcrumbs');
+  const backBtn = document.getElementById('back');
+
+  function render(){
+    const id = state.path[state.path.length-1];
+    // 結果?
+    const isResult = TREE.results[id] !== undefined;
+    if(isResult){
+      const r = TREE.results[id];
+      stage.innerHTML = `
+        <div class="result">
+          <div class="result-hdr">
+            <span class="badge">${escapeHtml(r.tag)}</span>
+            <span class="badge">${escapeHtml(r.prob)}</span>
+          </div>
+          <h2>${escapeHtml(r.title)}</h2>
+          <div class="why">${escapeHtml(r.why)}</div>
+          <div class="blocks">
+            <div class="block"><h4>参照</h4>
+              <ul><li>${escapeHtml(r.scenario)}</li>
+              <li><a href="03_シナリオ別対応プレイブック.md">03 シナリオ別プレイブック</a></li>
+              <li><a href="02.1_先にやること.md">02.1 先にやること</a></li>
+              <li><a href="06_DDoS対応詳細.md">06 DDoS 対応詳細</a></li></ul>
+            </div>
+            <div class="block"><h4>次の一手</h4>
+              <ul>${r.next.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>
+            </div>
+          </div>
+          <div class="next">あくまで候補。観測点のズレ・複数サーバ構成の可能性を忘れず、02.1 で再確認してから封じ込めへ。</div>
+        </div>`;
+    } else {
+      const node = TREE[id];
+      stage.innerHTML = `
+        <p class="q">${escapeHtml(node.q)}</p>
+        <p class="sub">${escapeHtml(node.sub||"")}</p>
+        <div class="choices">
+          ${node.choices.map((c,i)=>`<button class="choice" data-i="${i}">${escapeHtml(c.label)}</button>`).join('')}
+        </div>`;
+      stage.querySelectorAll('button.choice').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const c = node.choices[+btn.dataset.i];
+          state.path.push(c.next || c.result);
+          render();
+        });
+      });
+    }
+    // breadcrumbs
+    crumbs.innerHTML = state.path.map((p,i)=>
+      `<span class="bc">${i===0?"START":`Q${i}`}</span>`).join('');
+    backBtn.disabled = state.path.length<=1;
+    backBtn.style.opacity = state.path.length<=1?0.4:1;
+  }
+
+  function back(){
+    if(state.path.length>1){ state.path.pop(); render(); }
+  }
+  function reset(){ state.path = ["root"]; render(); }
+  function escapeHtml(s){ return (s??"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  render();
+</script>
+</body>
+</html>

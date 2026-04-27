@@ -1,0 +1,63 @@
+# 認証情報・API キー（絶対に commit しない）
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets/
+credentials/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 一時ファイル・ログ
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+shared-logs/
+handson_logs/
+data/cve/raw_*.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# ビルド成果物
+dist/
+build/
+target/
+*.egg-info/
+
+# 競技中の生成物（必要なら手動で commit）
+generated_rules.conf
+/tmp/
+output/
+
+# Docker（持ち込まないが念のため）
+*.tar
+*.tar.gz
+camp-images*
+
+# 大きな添付ファイル
+*.ova
+*.vmdk
+*.iso
+*.mf

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>情報危機管理コンテスト ハブ</title>
+<style>
+  :root{
+    --bg:#0B1220; --card:#111a2e; --ink:#E8ECF5; --muted:#9aa6c0;
+    --phone:#FF9A3D; --command:#B58BFF; --server:#5BB2FF; --network:#5CCB9A;
+    --border:#23304d; --accent:#7aa8ff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+    line-height:1.6}
+  header{padding:56px 24px 24px;text-align:center}
+  header h1{margin:0;font-size:28px;letter-spacing:.04em}
+  header p{margin:8px 0 0;color:var(--muted);font-size:14px}
+  .grid{max-width:1040px;margin:24px auto 64px;padding:0 20px;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+  a.card{display:block;text-decoration:none;color:inherit;
+    background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:22px 20px;transition:transform .15s,border-color .15s}
+  a.card:hover{transform:translateY(-2px);border-color:var(--accent)}
+  .tag{display:inline-block;font-size:11px;letter-spacing:.08em;
+    padding:3px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+  .title{margin:10px 0 4px;font-size:18px;font-weight:700}
+  .desc{font-size:13px;color:var(--muted)}
+  .phase{height:3px;width:48px;border-radius:2px;margin-top:14px;background:var(--accent)}
+  .c-phone .phase{background:var(--phone)} .c-phone .title{color:var(--phone)}
+  .c-cmd   .phase{background:var(--command)} .c-cmd .title{color:var(--command)}
+  .c-srv   .phase{background:var(--server)} .c-srv .title{color:var(--server)}
+  .c-net   .phase{background:var(--network)} .c-net .title{color:var(--network)}
+  .c-time  .phase{background:linear-gradient(90deg,var(--phone),var(--command))}
+  .row{max-width:1040px;margin:0 auto 8px;padding:0 20px;color:var(--muted);
+    font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+  footer{color:var(--muted);text-align:center;font-size:12px;padding:24px 0 40px}
+</style>
+</head>
+<body>
+<header>
+  <h1>情報危機管理コンテスト / 運用ハブ</h1>
+  <p>役割 × 時間帯ごとに1ページ。迷ったらアキネーターで判定。</p>
+</header>
+
+<div class="row">Timeline</div>
+<div class="grid">
+  <a class="card c-time" href="09_初動_0-15分.html">
+    <span class="tag">Phase 1</span>
+    <div class="title">初動 / 0–15分</div>
+    <div class="desc">受電 → 事実確認 → 封じ込め判断</div>
+    <div class="phase"></div>
+  </a>
+  <a class="card c-time" href="10_中間_15-60分.html">
+    <span class="tag">Phase 2</span>
+    <div class="title">中間 / 15–60分</div>
+    <div class="desc">構成把握・ログ精読・原因特定・仮復旧</div>
+    <div class="phase"></div>
+  </a>
+  <a class="card c-time" href="11_終了_60分以降.html">
+    <span class="tag">Phase 3</span>
+    <div class="title">終了 / 60分以降</div>
+    <div class="desc">本復旧 → 監視継続 → 完了報告 → 振り返り</div>
+    <div class="phase"></div>
+  </a>
+</div>
+
+<div class="row">判定ツール / 既存資料</div>
+<div class="grid">
+  <a class="card" href="12_アキネーター.html">
+    <span class="tag">Interactive</span>
+    <div class="title">インシデント判定アキネーター</div>
+    <div class="desc">質問に Yes/No で答えるとシナリオ番号と参照ファイルに着地</div>
+    <div class="phase"></div>
+  </a>
+  <a class="card" href="13_DDoSアキネーター.html">
+    <span class="tag">Interactive / DDoS</span>
+    <div class="title">DDoS 判定アキネーター</div>
+    <div class="desc">観測値 → 攻撃型 → オンプレ / AWS の環境別対処まで</div>
+    <div class="phase"></div>
+  </a>
+  <a class="card" href="07_スイムレーン.html">
+    <span class="tag">Overview</span>
+    <div class="title">全体スイムレーン (1枚)</div>
+    <div class="desc">4レーン × 3フェーズの俯瞰図</div>
+    <div class="phase"></div>
+  </a>
+  <a class="card" href="00_目次.md">
+    <span class="tag">Docs</span>
+    <div class="title">00 目次 (Markdown)</div>
+    <div class="desc">ワークブック本体の入口</div>
+    <div class="phase"></div>
+  </a>
+</div>
+
+<footer>和歌山大学 情報危機管理コンテスト 対応ワークブック</footer>
+</body>
+</html>

@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DDoS 切り分けアキネーター (コマンド版)</title>
+<style>
+  :root{
+    --bg:#0B1220; --card:#111a2e; --ink:#E8ECF5; --muted:#9aa6c0;
+    --accent:#7aa8ff; --ok:#5CCB9A; --warn:#FF9A3D; --bad:#ff6b6b;
+    --border:#23304d; --ddos:#ff7b7b; --code:#0a1226; --codeink:#cfe0ff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.65}
+  .topbar{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border)}
+  .topbar a{color:var(--muted);text-decoration:none;font-size:13px}
+  .topbar a:hover{color:var(--ink)}
+  .topbar .pill{margin-left:auto;font-size:12px;letter-spacing:.08em;color:var(--ddos);
+    border:1px solid #4a2a2e;padding:4px 10px;border-radius:999px;background:#2a1218}
+  header.hero{padding:36px 24px 8px;text-align:center}
+  header.hero h1{margin:0;font-size:26px;letter-spacing:.03em}
+  header.hero h1 .em{color:var(--ddos)}
+  header.hero p{margin:8px 0 0;color:var(--muted);font-size:14px}
+  main{max-width:880px;margin:0 auto;padding:20px 20px 60px}
+  .precheck{background:#2a1218;border:1px solid #4a2a2e;border-radius:12px;
+    padding:12px 14px;color:#ffd2d2;font-size:12.5px;margin-bottom:16px}
+  .stepbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .step-pill{font-size:11px;color:var(--muted);border:1px solid var(--border);
+    padding:3px 9px;border-radius:999px;background:#0f1730}
+  .step-pill.cur{color:#fff;border-color:#4a557a;background:#1a243f}
+  .step-pill.done{color:var(--ok);border-color:#2d5a3f;background:#0f2a1b}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px 22px 18px}
+  .step-head{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+  .step-head .num{font-size:12px;letter-spacing:.1em;color:var(--muted)}
+  .step-head .ttl{font-size:20px;font-weight:700}
+  .why{color:var(--muted);font-size:13px;margin:0 0 14px}
+
+  .cmd-block{background:var(--code);border:1px solid #1d2a4d;border-radius:10px;
+    padding:10px 12px;margin:8px 0;position:relative}
+  .cmd-block .tag{position:absolute;top:-9px;left:10px;font-size:10px;letter-spacing:.1em;
+    background:#1b2a52;color:#cfe0ff;padding:2px 8px;border-radius:999px;border:1px solid #27406b}
+  .cmd-block pre{margin:0;color:var(--codeink);font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12.5px;white-space:pre;overflow-x:auto;line-height:1.55}
+  .cmd-block .copy{position:absolute;top:6px;right:6px;font-size:11px;padding:2px 8px;
+    border-radius:6px;border:1px solid #27406b;background:#0e1a3a;color:var(--muted);cursor:pointer}
+  .cmd-block .copy:hover{color:#fff;border-color:var(--accent)}
+  .cmd-note{color:#8fa3cb;font-size:11.5px;margin:4px 2px 0}
+
+  .q-head{margin:14px 0 6px;font-size:13px;color:var(--muted);letter-spacing:.05em}
+  .choices{display:grid;gap:10px}
+  button.choice{appearance:none;cursor:pointer;text-align:left;
+    background:#0f1a36;border:1px solid var(--border);color:var(--ink);
+    padding:14px 16px;border-radius:12px;font-size:14.5px;line-height:1.5;
+    transition:border-color .15s,transform .1s;display:flex;gap:12px;align-items:flex-start}
+  button.choice:hover{border-color:var(--accent)}
+  button.choice:active{transform:scale(.99)}
+  button.choice .ico{font-size:16px;margin-top:1px;color:var(--muted)}
+  button.choice.danger .ico{color:var(--ddos)}
+  button.choice.ok .ico{color:var(--ok)}
+  button.choice .body .ex{display:block;color:#8fa3cb;font-size:12px;margin-top:3px;
+    font-family:ui-monospace,Menlo,Consolas,monospace}
+
+  .actions{margin-top:16px;display:flex;gap:10px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--border);background:var(--card);color:var(--ink);
+    padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;text-decoration:none}
+  .btn:hover{border-color:var(--accent)}
+
+  /* 結果 */
+  .result-hdr{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .badge{font-size:11.5px;padding:3px 9px;border-radius:999px;
+    background:#1b2c54;border:1px solid #34507d;color:#b3cdff}
+  .badge.prob-s{background:#3a1818;border-color:#6b2a2a;color:#ffb0b0}
+  .badge.prob-a{background:#3a2a12;border-color:#6b4a20;color:#ffd08c}
+  .badge.prob-b{background:#182a3a;border-color:#2a4a6b;color:#8ccaff}
+  .badge.prob-c{background:#1c2a1c;border-color:#2a4a2a;color:#9ddc9d}
+  .badge.conf{background:#2a1a3a;border-color:#4a2a6b;color:#d0a8ff}
+  .result h2{margin:4px 0 6px;font-size:22px}
+  .result .why{color:var(--muted);font-size:13.5px;margin:0 0 10px}
+  .summary{background:#0f1a36;border:1px solid var(--border);border-radius:12px;
+    padding:12px 14px;font-size:13px;margin:14px 0}
+  .summary h4{margin:0 0 6px;font-size:12px;color:var(--muted);letter-spacing:.08em}
+  .summary ul{margin:0;padding-left:18px}
+  .summary ul li{margin:3px 0}
+
+  .env{margin-top:6px}
+  .env h4{margin:0 0 6px;font-size:12px;letter-spacing:.08em;color:var(--muted)}
+  .env .tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .env .tab{appearance:none;border:1px solid var(--border);background:#0f1a36;color:var(--ink);
+    padding:6px 12px;border-radius:999px;cursor:pointer;font-size:12px}
+  .env .tab.active{background:#1a243f;border-color:#445a86}
+  .env-body{margin-top:10px;background:#0b1430;border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px;font-size:13.5px}
+  .env-body code{background:#22304e;color:#cfe0ff;padding:1px 6px;border-radius:4px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+  .danger{margin-top:12px;padding:12px 14px;background:#2a1218;border-left:3px solid var(--ddos);
+    border-radius:8px;color:#ffd2d2;font-size:13.5px}
+  .next{margin-top:12px;padding:12px 14px;background:#14193a;
+    border-left:3px solid #B58BFF;border-radius:8px;color:#d9d3ff;font-size:13.5px}
+
+  kbd.k{background:#22304e;color:#cfe0ff;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:11.5px;padding:1px 6px;border-radius:4px;border:1px solid #2e3f62}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="08_ハブ.html">← ハブ</a>
+  <a href="12_アキネーター.html">一般判定</a>
+  <a href="06_DDoS対応詳細.md">06 詳細 (md)</a>
+  <a href="02.1_先にやること.md">02.1 先にやること</a>
+  <span class="pill">DDOS · COMMAND TRIAGE</span>
+</div>
+
+<header class="hero">
+  <h1><span class="em">DDoS</span> 切り分けアキネーター</h1>
+  <p>コマンド → 出力 → 次のコマンド。上から順に埋める。</p>
+</header>
+
+<main>
+  <div class="precheck">
+    ⚠ このツールは <strong>02.1 の「事実確認」を終えた後</strong> に使う。
+    コマンドを実行して、出力を見て、それから選ぶ。結論を先に決めない。
+  </div>
+
+  <div id="stepbar" class="stepbar"></div>
+  <div id="stage" class="card"></div>
+  <div class="actions">
+    <button class="btn" id="back">← 戻る</button>
+    <button class="btn" id="reset">最初から</button>
+    <a class="btn" href="12_アキネーター.html">そもそも DDoS じゃないかも → 一般判定</a>
+  </div>
+</main>
+
+<script>
+  // ============================================================
+  //  STEP 型アキネーター
+  //  各ステップ: title / why / cmds[] / q / choices[]
+  //  choices: {label, ex?(出力例), icon?, class?, next|result}
+  //  result: {...} は TREE.results にあり
+  // ============================================================
+  const STEPS = {
+    s1: {
+      num:"STEP 1 / 5",
+      title:"サービスが本当に落ちているか?",
+      why:"まず「落ちている」を事実で確認する。顧客申告だけで DDoS 判定はしない。",
+      cmds:[
+        { tag:"外部から", code:"curl -I -m 5 https://TARGET\nping -c 3 TARGET" },
+      ],
+      q:"何が返ってきた?",
+      choices:[
+        { label:"200/301/302 が返る (サービスは生きている)",
+          ex:"HTTP/1.1 200 OK",
+          icon:"✅", cls:"ok", next:"s2" },
+        { label:"5xx が返る",
+          ex:"HTTP/1.1 503 Service Unavailable",
+          icon:"⚠️", next:"s2" },
+        { label:"タイムアウト (応答が返ってこない)",
+          ex:"curl: (28) Operation timed out",
+          icon:"⏳", next:"s2" },
+        { label:"Connection refused",
+          ex:"curl: (7) Failed to connect ... Connection refused",
+          icon:"🚫", next:"s2" },
+        { label:"ping は通るが http だけ返らない",
+          ex:"64 bytes from ... / curl timeout",
+          icon:"🪫", next:"s2" },
+        { label:"応答は正常で速度も普通 (本当に障害?)",
+          ex:"time=0.8s  HTTP/1.1 200 OK",
+          icon:"🤔", cls:"ok", result:"not_incident" },
+      ]
+    },
+
+    s2: {
+      num:"STEP 2 / 5",
+      title:"サーバのプロセスは動いているか?",
+      why:"死んでるなら DDoS ではなくプロセスクラッシュの可能性がある。",
+      cmds:[
+        { tag:"RHEL", code:"systemctl status httpd\nps auxf | grep -E 'httpd|nginx' | grep -v grep | wc -l" },
+        { tag:"Debian", code:"systemctl status apache2 nginx\nps auxf | grep -E 'apache2|nginx' | grep -v grep | wc -l" },
+        { tag:"FreeBSD", code:"service apache24 status || service nginx status\nps auxwww | grep -E 'httpd|nginx' | grep -v grep | wc -l" },
+      ],
+      q:"どの状態だった?",
+      choices:[
+        { label:"active (running) で、プロセス数は平常通り",
+          ex:"Active: active (running)\n10  (平常時と同程度)",
+          icon:"✅", next:"s3" },
+        { label:"active だが、プロセス数が設定上限に張り付いている",
+          ex:"MaxRequestWorkers = 150 / 実プロセス数 = 150",
+          icon:"🪫", next:"s4" /* 接続枯渇/Slow 系 */ },
+        { label:"inactive / failed になっている",
+          ex:"Active: failed (Result: exit-code)",
+          icon:"💥", cls:"danger", result:"process_down" },
+        { label:"繰り返し再起動している (Restart=...)",
+          ex:"Restart Counter: 12  (直近5分)",
+          icon:"🔁", cls:"danger", result:"process_flap" },
+      ]
+    },
+
+    s3: {
+      num:"STEP 3 / 5",
+      title:"システム負荷はどうか?",
+      why:"CPU/Load/Memory を見て、「本当に詰まっているか」「どこが詰まっているか」を分ける。",
+      cmds:[
+        { tag:"Linux", code:"uptime\ntop -bn1 | head -15\nfree -m\nvmstat 1 3" },
+        { tag:"FreeBSD", code:"uptime\ntop -b 15\nvmstat 1 3\nsysctl vm.stats.vm.v_free_count" },
+      ],
+      q:"どのパターン?",
+      choices:[
+        { label:"CPU/Load 高 + メモリ余裕 + user/system が高い",
+          ex:"load avg 12.4  Cpu(s): 80%us",
+          icon:"🔥", next:"s4" },
+        { label:"CPU/Load 高 + iowait が高い",
+          ex:"%wa  65.0   (vmstatで wa高)",
+          icon:"💾", cls:"ok", result:"io_wait" },
+        { label:"CPU/Load 高 + memory 枯渇 / swap 使用",
+          ex:"free=... swap used 80%",
+          icon:"🧠", cls:"ok", result:"oom" },
+        { label:"CPU も Load も低いのに応答が遅い",
+          ex:"load avg 0.3  Cpu(s): 5%us",
+          icon:"🫥", next:"s5" /* NW 側 or Slow 系 */ },
+        { label:"CPU は低いが、プロセス数は上限",
+          ex:"load avg 1.2 / httpd 150/150",
+          icon:"🐢", next:"s4b" /* Slowloris 濃厚 */ },
+      ]
+    },
+
+    s4: {
+      num:"STEP 4 / 5",
+      title:"TCP 接続の状態はどうか?",
+      why:"DDoS の型は TCP state の分布にかなり出る。",
+      cmds:[
+        { tag:"Linux", code:"ss -ant | awk 'NR>1{print $1}' | sort | uniq -c | sort -rn\nss -ant state syn-recv | wc -l\nss -ant state established | wc -l\nss -ant state fin-wait-1 | wc -l" },
+        { tag:"FreeBSD", code:"netstat -an -p tcp | awk 'NR>2{print $6}' | sort | uniq -c | sort -rn\nsockstat -4 -l" },
+      ],
+      q:"内訳は?",
+      choices:[
+        { label:"SYN-RECV が 100 超 / 普段の10倍以上",
+          ex:"SYN-RECV  812\nESTAB      30",
+          icon:"🚨", cls:"danger", result:"syn_flood" },
+        { label:"ESTAB が 200+ で長時間保持されている",
+          ex:"ESTAB  420  (同じIPから 30秒以上保持)",
+          icon:"🐌", next:"s4b" },
+        { label:"ESTAB が多い + 新規接続も絶えず増える",
+          ex:"ESTAB  350 (増減激しい)",
+          icon:"🌊", next:"s5" /* HTTP Flood寄り */ },
+        { label:"FIN_WAIT / CLOSE_WAIT が異常に多い",
+          ex:"FIN-WAIT-1  620\nCLOSE-WAIT  410",
+          icon:"🔚", cls:"danger", result:"fin_flood" },
+        { label:"state 分布は普通、数も普通",
+          ex:"ESTAB   40  /  LISTEN  8",
+          icon:"✅", next:"s6" /* NW側へ */ },
+      ]
+    },
+
+    s4b: {
+      num:"STEP 4b",
+      title:"Slow HTTP 系を確認",
+      why:"ESTAB が長時間保持 = Slowloris/Slow POST の典型。httpd の同時接続状態を見る。",
+      cmds:[
+        { tag:"Apache", code:"curl -s http://127.0.0.1/server-status?auto | head -40\n# Scoreboard の R(Reading) / W(Writing) の割合に注目" },
+        { tag:"nginx", code:"# active connections / reading / writing / waiting\ncurl -s http://127.0.0.1/nginx_status" },
+        { tag:"どちらでも", code:"# 1つの接続が何秒保持されているか\nss -tn state established '( sport = :80 or sport = :443 )' -o | head -20" },
+      ],
+      q:"出力の特徴は?",
+      choices:[
+        { label:"W(Writing) / keep-alive が多数、ヘッダ送信が延々続く",
+          ex:"W=140  R=2  K=3  (数十秒以上)",
+          icon:"🐌", cls:"danger", result:"slowloris" },
+        { label:"R(Reading) が多く、POST body を細切れ送信している",
+          ex:"R=120  (同一IPから POST /comment 多数)",
+          icon:"🐛", cls:"danger", result:"slow_post" },
+        { label:"上のどちらでもない → HTTP Flood 寄りで再確認",
+          ex:"W,R いずれも通常、リクエスト量が多い",
+          icon:"🌊", next:"s5" },
+      ]
+    },
+
+    s5: {
+      num:"STEP 5 / 5",
+      title:"アクセスログを集計する",
+      why:"L7 の攻撃は送信元IP / UA / URL の偏りに出る。直近1000行で十分。",
+      cmds:[
+        { tag:"RHEL", code:"tail -n 1000 /var/log/httpd/access_log | awk '{print $1}' | sort | uniq -c | sort -rn | head\ntail -n 1000 /var/log/httpd/access_log | awk -F'\\\"' '{print $6}' | sort | uniq -c | sort -rn | head\ntail -n 1000 /var/log/httpd/access_log | awk '{print $7}' | sort | uniq -c | sort -rn | head" },
+        { tag:"Debian", code:"tail -n 1000 /var/log/apache2/access.log | awk '{print $1}' | sort | uniq -c | sort -rn | head\ntail -n 1000 /var/log/apache2/access.log | awk -F'\\\"' '{print $6}' | sort | uniq -c | sort -rn | head" },
+        { tag:"FreeBSD", code:"tail -n 1000 /var/log/httpd-access.log | awk '{print $1}' | sort | uniq -c | sort -rn | head" },
+      ],
+      q:"ログ集計の結果は?",
+      choices:[
+        { label:"上位IPが極端 (1IPで全体の50%超)",
+          ex:"842  203.0.113.7\n 15   ...",
+          icon:"🎯", next:"s5a" },
+        { label:"UA が単一で大量",
+          ex:"920  \"Mozilla/5.0 (compatible; Xbot/1.0)\"",
+          icon:"🤖", next:"s5a" },
+        { label:"IP も UA も分散しているが、総量が普段の数十倍",
+          ex:"IP 上位は 5件 × 30件、UA も多様",
+          icon:"🕸", next:"s6" },
+        { label:"特定 URL (/login, /search, /api) にリクエスト集中",
+          ex:"780  POST /login",
+          icon:"🎯", cls:"danger", result:"http_api_flood" },
+        { label:"特定 URL (/, /index.html) に集中",
+          ex:"820  GET /",
+          icon:"📄", next:"s5a" },
+        { label:"ログ量は増えていない / 特徴無し",
+          ex:"直近1000行: 平常と差分なし",
+          icon:"🤔", next:"s6" },
+      ]
+    },
+
+    s5a: {
+      num:"STEP 5a",
+      title:"ターゲットURLの性質で分類",
+      why:"L7 は URL 性質によって効く対処が違う。",
+      cmds:[
+        { tag:"どのURLが集中したか", code:"tail -n 1000 /var/log/httpd/access_log | awk '{print $6,$7}' | sort | uniq -c | sort -rn | head" },
+      ],
+      q:"集中している URL は?",
+      choices:[
+        { label:"GET / トップ / 静的ページ",
+          ex:"GET /  GET /index.html",
+          icon:"📄", result:"http_get_flood" },
+        { label:"POST が異常に多い (コメント/フォーム/comment.php 等)",
+          ex:"POST /wp-comments-post.php",
+          icon:"📝", result:"http_post_flood" },
+        { label:"重い処理 (/login, /search, /api/xxx)",
+          ex:"POST /login  GET /search?...",
+          icon:"🎯", cls:"danger", result:"http_api_flood" },
+        { label:"トップは分散、正規UA、Cookie/Referer まで偽装",
+          ex:"一見普通、しかしレートだけ高い",
+          icon:"🎭", result:"http_mimic" },
+      ]
+    },
+
+    s6: {
+      num:"STEP 6",
+      title:"ネットワーク側を見る",
+      why:"L4 以下の攻撃は、サーバ側が静かでも入口で詰まる。観測点を入口に移す。",
+      cmds:[
+        { tag:"サーバ NIC", code:"sar -n DEV 1 3   # 10sec 程度\nifstat 1 3\ncat /proc/net/dev" },
+        { tag:"YAMAHA", code:"show status pp 1\nshow ip traffic list\nshow status nat descriptor" },
+        { tag:"Cisco", code:"show interfaces | include rate\nshow conn count\nshow access-list" },
+        { tag:"AWS", code:"# CloudWatch\n# - NewConnectionCount (ALB/NLB)\n# - NetworkPacketsIn, NetworkIn\n# WAF\n# - Sampled Requests を開く" },
+      ],
+      q:"NW側の状態は?",
+      choices:[
+        { label:"外向け RX が平常の 倍以上、ほぼ UDP",
+          ex:"rxpck/s = 平常の ×15、UDP 90%",
+          icon:"🌊", next:"s6a" },
+        { label:"外向け RX が多い、TCP が中心",
+          ex:"rxpck/s 増、SYN 多数",
+          icon:"🔨", result:"syn_flood" },
+        { label:"pps は急増しているが帯域は増えていない (小パケット)",
+          ex:"pps ×20 / bps ×2",
+          icon:"🐜", result:"pps_small" },
+        { label:"サーバ側は増加、FW/LB 側は落ち着いている",
+          ex:"sar 増、show int 正常",
+          icon:"🧭", result:"obs_drift" },
+        { label:"FW/LB 側も静か、サーバ側も静か (なのに遅い)",
+          ex:"どの観測点でも平常",
+          icon:"🫥", result:"not_ddos_other" },
+      ]
+    },
+
+    s6a: {
+      num:"STEP 6a",
+      title:"UDP の発信ポートを見る",
+      why:"反射型は src-port が特定ポートに偏る。",
+      cmds:[
+        { tag:"pcap", code:"tcpdump -nn -c 1000 -i em0 udp | awk '{print $3}' | awk -F. '{print $NF}' | sort | uniq -c | sort -rn | head" },
+        { tag:"netflow/sflow", code:"# flow-capture / goflow などで src-port 集計\n# 53(DNS)/123(NTP)/11211(memcached)/389(CLDAP)/1900(SSDP)" },
+      ],
+      q:"src-port の偏りは?",
+      choices:[
+        { label:"53/123/11211/389/1900 などに集中",
+          ex:"780  .53\n640  .123",
+          icon:"🪞", cls:"danger", result:"udp_reflect" },
+        { label:"バラバラ / 判別つかない",
+          ex:"src-port が散らばる",
+          icon:"🌊", result:"udp_flood" },
+      ]
+    },
+
+    // ============= 結果 =============
+    results: {
+      not_incident:{ title:"障害と言えない", tag:"誤検知疑い", prob:"—", conf:"高",
+        why:"サービスは応答し、レイテンシも平常。まず 01 受電シートの事実を再確認する。",
+        summary:[ "顧客申告と観測の乖離を記録", "再現手順・端末・時刻を再聴取", "他ユーザで再現しないかを確認" ],
+        subtype:"meta",
+        danger:"「起きていない」ことも重要な結論。勝手に対処を入れない。" },
+
+      process_down:{ title:"プロセス停止 (非DDoS寄り)", tag:"プロセス障害", prob:"B", conf:"高",
+        why:"サーバプロセス自体が落ちている。まず起動ログ/コアダンプを見る。",
+        summary:[ "systemctl/journalctl で直前のログ", "core / crash ダンプの有無", "設定ミス・メモリ不足・依存サービス停止の順に疑う" ],
+        subtype:"notddos",
+        danger:"再起動を急ぐとログが消える。証拠保全を先に。" },
+
+      process_flap:{ title:"プロセス繰り返しクラッシュ", tag:"アプリ / 設定障害", prob:"B", conf:"中",
+        why:"起動してもすぐ落ちる状態。DDoS で落ちている可能性もあるが、まずクラッシュ理由を。",
+        summary:[ "ログのクラッシュ直前の行", "直近の設定/デプロイ差分", "依存サービスのヘルス" ],
+        subtype:"notddos",
+        danger:"Systemd の Restart= が原因究明を遅らせる。一時的に Restart=no で挙動確認。" },
+
+      oom:{ title:"メモリ枯渇 / OOM (非DDoS寄り)", tag:"リソース", prob:"B", conf:"中",
+        why:"memory 不足 / swap 頼りで遅い。DDoS の結果として OOM になることもあるが先に原因を。",
+        summary:[ "dmesg で OOM killer 発火", "リーク / 大量セッション保持", "キャッシュ設計の見直し" ],
+        subtype:"notddos",
+        danger:"swap 依存は延命でしかない。根本のメモリ消費者を特定。" },
+
+      io_wait:{ title:"IO/DB 起因 (非DDoS寄り)", tag:"非攻撃", prob:"A", conf:"高",
+        why:"iowait が高い = ディスク/DB 起因。「サーバ重い」の頻出1位。",
+        summary:[ "DB スロークエリ / ロック", "直近リリース差分", "ディスク使用率・RAID・IOPS" ],
+        subtype:"notddos",
+        danger:"DDoS と誤判定しやすい。NW 側に証拠が無いなら DDoS と断定しない。" },
+
+      syn_flood:{ title:"SYN Flood", tag:"L4 接続確立枯渇", prob:"S", conf:"高",
+        why:"SYN-RECV の急増 / TCP SYN の帯域増で裏付け。",
+        summary:[ "syncookies 有効化 / backlog 拡張", "上流で SYN rate-limit 要請", "SG / ACL を追加 (上書き禁止)" ],
+        subtype:"syn",
+        danger:"サーバ側対処だけでは限界。上流/クラウド側と並行で。" },
+
+      fin_flood:{ title:"FIN/ACK/RST state 枯渇", tag:"L4 state table", prob:"C", conf:"中",
+        why:"FIN_WAIT/CLOSE_WAIT の異常。FW/LB の state table が被害側。",
+        summary:[ "FW の state timeout 見直し", "invalid flag の早期 drop", "上流でレート制限要請" ],
+        subtype:"ack",
+        danger:"サーバより FW/LB 側に症状が出やすい。" },
+
+      slowloris:{ title:"Slow HTTP (Slowloris)", tag:"L7 接続保持", prob:"A", conf:"高",
+        why:"ESTAB 長時間 + W 多数。帯域/PPSは静か。",
+        summary:[ "<kbd class=\"k\">mod_reqtimeout</kbd> / <kbd class=\"k\">limit_conn</kbd>", "Timeout / KeepAliveTimeout 短縮", "MPM の同時接続設計を見直し" ],
+        subtype:"slow",
+        danger:"FW の数値だけ見ていると見逃す。httpd 内部を見る。" },
+
+      slow_post:{ title:"Slow HTTP POST", tag:"L7 接続保持", prob:"A", conf:"中",
+        why:"R(reading) 多数 + POST 本体を細切れ送信。",
+        summary:[ "request body timeout", "最大 body size 制限", "書込み系 API のレート制限" ],
+        subtype:"slow",
+        danger:"DB にもじわじわ効く。DB 側のロック確認も。" },
+
+      http_get_flood:{ title:"HTTP GET Flood (静的狙い)", tag:"L7 単純型", prob:"A", conf:"高",
+        why:"少数 IP / UA / URL の偏り。",
+        summary:[ "上位IPで簡易ブロック", "CDN / キャッシュ前段化", "<kbd class=\"k\">limit_req_zone</kbd> で rate-limit" ],
+        subtype:"httpflood",
+        danger:"静的にキャッシュされると動的 API は守れない。用途で分岐する。" },
+
+      http_post_flood:{ title:"HTTP POST Flood", tag:"L7 単純型", prob:"B", conf:"中",
+        why:"POST に偏る。書込み負荷で DB に影響しやすい。",
+        summary:[ "CAPTCHA / ワンタイムトークン", "POST 系エンドポイントに rate-limit", "DB ロック/コミット頻度の確認" ],
+        subtype:"httpflood",
+        danger:"WordPress wp-comments-post.php 等は定番の狙い目。" },
+
+      http_api_flood:{ title:"重いAPI狙い撃ち", tag:"L7 枯渇型", prob:"S", conf:"高",
+        why:"/login /search などコスト高エンドポイントに集中。",
+        summary:[ "エンドポイント別 rate-limit", "重い処理をキャッシュ or 非同期化", "認証前の入力サニタイズ" ],
+        subtype:"httpflood",
+        danger:"正規UAに混ざることが多い。誤遮断の影響も見積もる。" },
+
+      http_mimic:{ title:"正規ユーザ偽装型 HTTP 攻撃", tag:"L7 高難度", prob:"B", conf:"低",
+        why:"Cookie/Referer/UA 模倣、IP も分散。ログからは普通に見える。",
+        summary:[ "WAF Bot 検知 / CAPTCHA", "行動ベースの異常検知", "完全な遮断より、率/コストでの制御" ],
+        subtype:"httpflood",
+        danger:"誤遮断が正規ユーザを切る。ビジネス指標を並走監視。" },
+
+      udp_flood:{ title:"UDP Flood (非反射)", tag:"L3 帯域/PPS", prob:"B", conf:"中",
+        why:"UDP 偏り、src-port に反射系の偏り無し。",
+        summary:[ "不要 UDP ポートを閉じる", "上流で rate-limit 要請", "ENA/NIC の PPS 上限監視" ],
+        subtype:"udp",
+        danger:"自網だけでは吸えない。上流の協力が要る。" },
+
+      udp_reflect:{ title:"UDP 反射攻撃 (DNS/NTP/Memcached/LDAP 等)", tag:"L3 増幅", prob:"B", conf:"高",
+        why:"UDP の src-port が反射サービスのポートに集中。",
+        summary:[ "該当 src-port を広域で drop 要請", "自網が踏み台側でないかも確認", "CDN/エッジ前段化の検討" ],
+        subtype:"reflect",
+        danger:"被害側単独では解決しない。回線/ISP を巻き込む。" },
+
+      pps_small:{ title:"高 PPS / 小パケット", tag:"L3 PPS", prob:"C", conf:"中",
+        why:"pps だけ極端に高い。帯域は相対的に控えめ。",
+        summary:[ "NIC の PPS 上限を確認", "RSS/RPS を分散", "AWS は ENA のキュー・帯域上限を確認" ],
+        subtype:"pps",
+        danger:"CPU が softirq で張り付く典型パターン。" },
+
+      obs_drift:{ title:"観測点のズレ", tag:"メタ", prob:"—", conf:"—",
+        why:"サーバと FW で値が合わない / 被害サーバと攻撃対象が別。",
+        summary:[ "FW / LB / サーバ / アプリの同時刻値を揃える", "多段構成で隣のサーバも見る", "サーバAから取り込んでいるサーバBも確認" ],
+        subtype:"meta",
+        danger:"ここを解消せずに遮断を入れると誤遮断になる。" },
+
+      not_ddos_other:{ title:"DDoSではない可能性が高い", tag:"非攻撃", prob:"S", conf:"高",
+        why:"NW もサーバも静か。遅さの原因は別層(DB/外部API/DNS/証明書)。",
+        summary:[ "02.1 に戻って再確認", "DB / 外部API / DNS / 証明書 の順に潰す", "同時刻で全層の値を並べて差分を見る" ],
+        subtype:"notddos",
+        danger:"DDoS として対処すると逆に悪化する。" }
+    }
+  };
+
+  // ============ 環境別対処 (結果画面の下に表示) ============
+  const ACTIONS = {
+    syn:{ onpre:[
+        "サーバ: <code>sysctl -w net.ipv4.tcp_syncookies=1</code>",
+        "サーバ: <code>sysctl -w net.ipv4.tcp_max_syn_backlog=8192</code>",
+        "YAMAHA: <code>ip pp secure filter</code> は <strong>追加</strong>で登録 (上書き禁止)",
+        "Cisco: <code>ip tcp intercept list ...</code> / ACL 追加",
+        "上流ISP/回線側に SYN 攻撃の有無を共有"
+      ], aws:[
+        "ALB/NLB 経由は Shield Standard で基礎受け",
+        "SG: 不要ポート閉塞",
+        "NACL: 広域 src-IP 遮断 (ステートレスで早期)",
+        "ASG で水平拡張 + CloudWatch アラーム"
+      ]},
+    ack:{ onpre:[
+        "FW の state timeout / table size 見直し",
+        "<code>iptables ... -m state --state INVALID -j DROP</code>",
+        "上流で rate-based ACK drop を要請"
+      ], aws:[
+        "Shield Advanced の自動軽減",
+        "NACL で早期 drop",
+        "ENI の PPS 制限を監視"
+      ]},
+    udp:{ onpre:[
+        "不要 UDP ポートを <code>firewalld/ufw/pf</code> で閉じる",
+        "上流で UDP rate-limit 要請",
+        "NIC の RSS/RPS でコア偏りを解消"
+      ], aws:[
+        "NLB UDP リスナーなら target 側で制限",
+        "SG で必要 UDP のみ (5060/123 要注意)",
+        "CloudWatch <code>NetworkPacketsIn</code> アラーム"
+      ]},
+    reflect:{ onpre:[
+        "自網が <strong>踏み台</strong>化していないか先に確認 (オープンリゾルバ等)",
+        "上流に src-port 53/123/11211/389/1900 の drop 要請",
+        "前段に CDN/エッジを挟む構成を検討"
+      ], aws:[
+        "Shield Standard/WAF では不足気味。Advanced / 回線事業者対応が現実解",
+        "NACL で該当 src-port を広域 drop",
+        "CloudFront でエッジ前段化"
+      ]},
+    pps:{ onpre:[
+        "<code>ethtool -S</code> で NIC カウンタを監視",
+        "RSS/RPS/RFS を整えてコア分散",
+        "上流での PPS 制限要請"
+      ], aws:[
+        "ENA の PPS 上限を確認",
+        "インスタンスサイズ UP / マルチAZ",
+        "<code>NetworkPacketsIn/Out</code> アラーム"
+      ]},
+    slow:{ onpre:[
+        "Apache: <code>mod_reqtimeout</code> / <code>Timeout</code> / <code>KeepAliveTimeout</code> 短縮",
+        "nginx: <code>client_header_timeout</code> / <code>client_body_timeout</code> / <code>limit_conn</code>",
+        "MPM の worker/同時接続の設計見直し",
+        "LB のアイドルタイムアウト短縮"
+      ], aws:[
+        "ALB Idle timeout 短縮",
+        "WAF カスタムルール (難易度高)",
+        "ASG で水平拡張しつつ原因特定"
+      ]},
+    httpflood:{ onpre:[
+        "<code>limit_req_zone</code> / <code>limit_conn</code> で rate-limit",
+        "上位IP/UA/URL の簡易 block",
+        "重いエンドポイントは別プロセス/別サーバに分離",
+        "CDN/キャッシュを前段化"
+      ], aws:[
+        "<strong>WAF Rate-Based を最優先</strong>投入",
+        "WAF Bot Control で分散対応",
+        "CloudFront + Origin Shielding",
+        "ALB ヘルスチェック頻度見直し"
+      ]},
+    notddos:{ onpre:[
+        "02.1 の「先にやること」に戻る",
+        "DB スロークエリ / ロック / ディスク",
+        "外部API ステータス確認",
+        "DNS は複数リゾルバで切り分け"
+      ], aws:[
+        "CloudWatch で各種メトリクスを同時刻で比較",
+        "RDS Performance Insights",
+        "X-Ray で依存関係トレース"
+      ]},
+    meta:{ onpre:[
+        "観測点を増やす (FW / LB / サーバ / アプリ)",
+        "同時刻の値を並べて差分を取る",
+        "02.1 を最初からやり直す"
+      ], aws:[
+        "CloudWatch に複数ソースを重ねる",
+        "VPC Flow Logs を有効化",
+        "WAF/Shield の Detection Metrics を確認"
+      ]}
+  };
+
+  const ORDER = ["s1","s2","s3","s4","s4b","s5","s5a","s6","s6a"];
+
+  const state = { path: ["s1"] };
+  const stage = document.getElementById('stage');
+  const stepbar = document.getElementById('stepbar');
+
+  function isResult(id){ return !!STEPS.results[id]; }
+
+  function render(){
+    const id = state.path[state.path.length-1];
+    if(isResult(id)){
+      renderResult(id);
+    } else {
+      renderStep(id);
+    }
+    renderStepbar();
+    const back = document.getElementById('back');
+    back.disabled = state.path.length<=1;
+    back.style.opacity = state.path.length<=1?0.4:1;
+  }
+
+  function renderStepbar(){
+    const last = state.path[state.path.length-1];
+    const currentIdx = ORDER.indexOf(last);
+    stepbar.innerHTML = ORDER.map((s,i)=>{
+      let cls = "step-pill";
+      if(state.path.includes(s) && s!==last) cls += " done";
+      if(s===last) cls += " cur";
+      return `<span class="${cls}">${s.toUpperCase()}</span>`;
+    }).join('') + (isResult(last)?`<span class="step-pill cur">RESULT</span>`:'');
+  }
+
+  function renderStep(id){
+    const st = STEPS[id];
+    stage.innerHTML = `
+      <div class="step-head">
+        <span class="num">${escapeHtml(st.num)}</span>
+        <span class="ttl">${escapeHtml(st.title)}</span>
+      </div>
+      <p class="why">${escapeHtml(st.why)}</p>
+
+      ${st.cmds.map((c,i)=>`
+        <div class="cmd-block">
+          <span class="tag">${escapeHtml(c.tag)}</span>
+          <button class="copy" data-i="${i}">copy</button>
+          <pre id="code-${i}">${escapeHtml(c.code)}</pre>
+        </div>`).join('')}
+
+      <p class="q-head">▷ 出力を見て、該当するものを選ぶ</p>
+      <div class="choices">
+        ${st.choices.map((c,i)=>`
+          <button class="choice ${c.cls||''}" data-i="${i}">
+            <span class="ico">${c.icon||"›"}</span>
+            <span class="body">
+              ${escapeHtml(c.label)}
+              ${c.ex?`<span class="ex">例: ${escapeHtml(c.ex)}</span>`:""}
+            </span>
+          </button>`).join('')}
+      </div>
+    `;
+    // handlers
+    stage.querySelectorAll('.copy').forEach(btn=>{
+      btn.addEventListener('click', (ev)=>{
+        ev.stopPropagation();
+        const i = +btn.dataset.i;
+        const text = st.cmds[i].code;
+        navigator.clipboard?.writeText(text);
+        btn.textContent = "copied";
+        setTimeout(()=>btn.textContent="copy", 1200);
+      });
+    });
+    stage.querySelectorAll('button.choice').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const c = st.choices[+btn.dataset.i];
+        state.path.push(c.next || c.result);
+        render();
+        window.scrollTo({top:0,behavior:'smooth'});
+      });
+    });
+  }
+
+  function renderResult(id){
+    const r = STEPS.results[id];
+    const probClass = ({S:"prob-s",A:"prob-a",B:"prob-b",C:"prob-c"}[r.prob]||"");
+    const acts = ACTIONS[r.subtype] || ACTIONS.meta;
+    stage.innerHTML = `
+      <div class="result">
+        <div class="result-hdr">
+          <span class="badge">${escapeHtml(r.tag)}</span>
+          <span class="badge ${probClass}">本大会ランク: ${escapeHtml(r.prob)}</span>
+          <span class="badge conf">判定確度: ${escapeHtml(r.conf)}</span>
+        </div>
+        <h2>${escapeHtml(r.title)}</h2>
+        <p class="why">${escapeHtml(r.why)}</p>
+
+        <div class="summary">
+          <h4>即いまやること (優先度順)</h4>
+          <ul>${r.summary.map(x=>`<li>${x}</li>`).join('')}</ul>
+        </div>
+
+        <div class="env">
+          <h4>環境別 対処テンプレ</h4>
+          <div class="tabs">
+            <button class="tab active" data-env="onpre">オンプレ (YAMAHA / Cisco)</button>
+            <button class="tab" data-env="aws">AWS</button>
+          </div>
+          <div class="env-body" id="envBody"></div>
+        </div>
+
+        <div class="danger">注意: ${escapeHtml(r.danger)}</div>
+        <div class="next">封じ込め → 復旧 の順序は崩さない。適用後は <strong>正常ユーザの 4xx 率・内部通信・ヘルスチェック</strong> を1分単位で確認する。参照: <a href="06_DDoS対応詳細.md">06</a> / <a href="03_シナリオ別対応プレイブック.md">03#4</a></div>
+      </div>
+    `;
+    const envBody = document.getElementById('envBody');
+    function renderEnv(env){
+      const items = acts[env] || [];
+      envBody.innerHTML = `<ul style="margin:0;padding-left:18px">${items.map(x=>`<li>${x}</li>`).join('')}</ul>`;
+    }
+    renderEnv('onpre');
+    stage.querySelectorAll('.env .tab').forEach(t=>{
+      t.addEventListener('click', ()=>{
+        stage.querySelectorAll('.env .tab').forEach(x=>x.classList.remove('active'));
+        t.classList.add('active');
+        renderEnv(t.dataset.env);
+      });
+    });
+  }
+
+  document.getElementById('back').addEventListener('click', ()=>{
+    if(state.path.length>1){ state.path.pop(); render(); window.scrollTo({top:0,behavior:'smooth'}); }
+  });
+  document.getElementById('reset').addEventListener('click', ()=>{
+    state.path = ["s1"]; render(); window.scrollTo({top:0,behavior:'smooth'});
+  });
+
+  function escapeHtml(s){ return (s??"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  render();
+</script>
+</body>
+</html>

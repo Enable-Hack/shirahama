@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>中間 15–60分 チェックリスト</title>
+<style>
+  :root{
+    --bg:#0B1220; --card:#111a2e; --ink:#E8ECF5; --muted:#9aa6c0;
+    --phone:#FF9A3D; --command:#B58BFF; --server:#5BB2FF; --network:#5CCB9A;
+    --border:#23304d;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.65}
+  .topbar{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border)}
+  .topbar a{color:var(--muted);text-decoration:none;font-size:13px}
+  .topbar a:hover{color:var(--ink)}
+  .topbar .phase-pill{margin-left:auto;font-size:12px;letter-spacing:.08em;color:var(--muted);
+    border:1px solid var(--border);padding:4px 10px;border-radius:999px}
+  header.hero{padding:36px 24px 16px;text-align:center}
+  header.hero h1{margin:0;font-size:26px;letter-spacing:.03em}
+  header.hero p{margin:6px 0 0;color:var(--muted);font-size:14px}
+  .tabs{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:20px 16px 8px}
+  .tab{appearance:none;border:1px solid var(--border);background:var(--card);color:var(--ink);
+    padding:10px 16px;border-radius:999px;cursor:pointer;font-size:14px}
+  .tab .dot{display:inline-block;width:8px;height:8px;border-radius:999px;margin-right:8px;vertical-align:middle}
+  .tab[data-r=phone] .dot{background:var(--phone)}
+  .tab[data-r=cmd]   .dot{background:var(--command)}
+  .tab[data-r=srv]   .dot{background:var(--server)}
+  .tab[data-r=net]   .dot{background:var(--network)}
+  .tab.active{background:#1a243f;border-color:#445a86}
+  main{max-width:820px;margin:0 auto;padding:12px 20px 60px}
+  .lane{display:none}
+  .lane.active{display:block}
+  .lane h2{margin:18px 0 6px;font-size:20px}
+  .lane .sub{color:var(--muted);font-size:13px;margin-bottom:14px}
+  .progress{height:6px;background:#1a2340;border-radius:3px;overflow:hidden;margin:6px 0 18px}
+  .bar{height:100%;width:0;transition:width .3s;background:linear-gradient(90deg,#5BB2FF,#B58BFF)}
+  ul.check{list-style:none;padding:0;margin:0}
+  ul.check li{display:flex;gap:12px;align-items:flex-start;background:var(--card);
+    border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:10px 0;cursor:pointer;
+    transition:border-color .15s,opacity .15s}
+  ul.check li:hover{border-color:#445a86}
+  ul.check li.done{opacity:.55;text-decoration:line-through;text-decoration-color:#5b6783}
+  .box{flex:0 0 22px;height:22px;border:2px solid #5b6783;border-radius:6px;margin-top:2px;
+    display:flex;align-items:center;justify-content:center;font-size:14px}
+  li.done .box{background:#5CCB9A;border-color:#5CCB9A;color:#0b1220}
+  .content .ttl{font-weight:600}
+  .content .hint{color:var(--muted);font-size:13px;margin-top:4px}
+  .kbd{background:#22304e;color:#cfe0ff;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12px;padding:1px 6px;border-radius:4px;border:1px solid #2e3f62}
+  .note{margin-top:18px;padding:14px 16px;border-left:3px solid #B58BFF;background:#14193a;
+    border-radius:8px;color:#d9d3ff;font-size:13px}
+  .actions{display:flex;gap:10px;margin-top:18px}
+  .btn{appearance:none;border:1px solid var(--border);background:var(--card);color:var(--ink);
+    padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;text-decoration:none}
+  .btn:hover{border-color:#445a86}
+  .lane[data-r=phone] h2{color:var(--phone)}
+  .lane[data-r=cmd]   h2{color:var(--command)}
+  .lane[data-r=srv]   h2{color:var(--server)}
+  .lane[data-r=net]   h2{color:var(--network)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="09_初動_0-15分.html">← 初動</a>
+  <a href="08_ハブ.html">ハブ</a>
+  <a href="11_終了_60分以降.html">終了 →</a>
+  <span class="phase-pill">PHASE 2 · 15–60分</span>
+</div>
+
+<header class="hero">
+  <h1>中間チェックリスト</h1>
+  <p>構成把握 → ログ精読 → 原因特定 → 封じ込め／仮復旧。</p>
+</header>
+
+<div class="tabs" id="tabs">
+  <button class="tab active" data-r="phone"><span class="dot"></span>電話対応</button>
+  <button class="tab" data-r="cmd"><span class="dot"></span>指揮</button>
+  <button class="tab" data-r="srv"><span class="dot"></span>サーバー</button>
+  <button class="tab" data-r="net"><span class="dot"></span>ネットワーク</button>
+</div>
+
+<main>
+
+<section class="lane active" data-r="phone">
+  <h2>電話対応 / 15–60分</h2>
+  <div class="sub">2本目以降の電話に備え、既存の通話者と温度を保つ。参照: 01 / 04</div>
+  <div class="progress"><div class="bar"></div></div>
+  <ul class="check">
+    <li><div class="box">✓</div><div class="content"><div class="ttl">15〜30分ごとに顧客へ途中報告の連絡</div><div class="hint">「調査継続中」「影響範囲はまだ確定していない」と事実で伝える。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">追加受電があれば既存事案と紐づける</div><div class="hint">同じ現象なら同じチケット番号にまとめる。別現象なら別番号。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">2件目の陽動を想定してヘルプを要請</div><div class="hint">電話が被ったら記録係が応援。指揮に優先度を判定させる。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">経営層からの問い合わせは指揮経由で</div><div class="hint">技術の一次情報を指揮が整形してから回す。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">復旧時刻を約束しない</div><div class="hint">「次の連絡時刻」だけ約束する。例: 「30分後に状況をお電話します」</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">外部通報の話は本大会では扱わないと明確に</div><div class="hint">警察・IPA・個情委の話題が出たら「社内プロセスで確認」と返す。</div></div></li>
+  </ul>
+  <div class="actions">
+    <button class="btn" onclick="resetLane()">チェックをリセット</button>
+    <a class="btn" href="11_終了_60分以降.html">次 → 終了</a>
+  </div>
+</section>
+
+<section class="lane" data-r="cmd">
+  <h2>指揮 / 15–60分</h2>
+  <div class="sub">封じ込めの判断を下す。記録と連絡線を維持する。参照: 02.1 / 03 / 05</div>
+  <div class="progress"><div class="bar"></div></div>
+  <ul class="check">
+    <li><div class="box">✓</div><div class="content"><div class="ttl">仮説を1つに絞らず、上位3つを並べる</div><div class="hint">例: DDoS / DB詰まり / DNS。優先的に潰す順を決める。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">03 シナリオ別プレイブックから該当項目を開く</div><div class="hint">手順を逸脱しない。迷ったら一番影響が限定的な手から。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">封じ込めの GO/NO-GO を言語化</div><div class="hint">「誰が・何を・いつ・どこまで」遮断するかを口頭で全員に通知。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">影響範囲を図で更新</div><div class="hint">どのサーバが正常 / 影響 / 停止中かを色分け。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">ログ保全指示を出す</div><div class="hint">再起動やローテート前に対象を退避。「何を」「どこへ」を指定。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">05 全体チェックの Phase 2 欄を埋めていく</div><div class="hint">終わった項目を可視化。漏れを防ぐ。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">30分ごとに1分ミーティング</div><div class="hint">進捗・ブロッカー・次の15分の目標だけ。</div></div></li>
+  </ul>
+  <div class="note">⚠ 「封じ込め > 復旧」の順序を崩さない。先に戻すと再発して損害が広がる。</div>
+  <div class="actions">
+    <button class="btn" onclick="resetLane()">チェックをリセット</button>
+    <a class="btn" href="11_終了_60分以降.html">次 → 終了</a>
+  </div>
+</section>
+
+<section class="lane" data-r="srv">
+  <h2>サーバー / 15–60分</h2>
+  <div class="sub">ログを深掘りし、原因仮説に白黒をつける。参照: 02.1 / 03 / 06</div>
+  <div class="progress"><div class="bar"></div></div>
+  <ul class="check">
+    <li><div class="box">✓</div><div class="content"><div class="ttl">アクセスログのエラー比率・レイテンシ分布</div><div class="hint">例: 5xxの増加・TTFBの肥大。数値をメモ。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">関連サービスとの依存関係を洗う</div><div class="hint">DB / キャッシュ / 外部 API / 認証基盤。障害点は隣のサーバの可能性。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">プロセス単位の挙動を記録</div><div class="hint"><span class="kbd">pidstat -u 1</span> / <span class="kbd">vmstat 1</span> でスパイクか定常かを判別。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">改ざん / 侵害の痕跡をチェック</div><div class="hint">新規ファイル・cron の不審エントリ・SSH 公開鍵・uid=0 の新規ユーザ。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">封じ込めの実行 (指揮の合図後)</div><div class="hint">例: 問題プロセスの隔離、疑いアカウント無効化、不要ポートのクローズ。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">証拠保全: ログ・メモリ・ディスクのコピー</div><div class="hint">上書きされる前に退避。ハッシュも取っておく。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">設定変更は diff を残す</div><div class="hint">復旧後に戻せるよう、前後の diff と実行時刻を記録。</div></div></li>
+  </ul>
+  <div class="note">⚠ OS差異: RHEL 系は <span class="kbd">/var/log/httpd/</span>, Debian 系は <span class="kbd">/var/log/apache2/</span>, FreeBSD は <span class="kbd">/var/log/httpd-*.log</span>。</div>
+  <div class="actions">
+    <button class="btn" onclick="resetLane()">チェックをリセット</button>
+    <a class="btn" href="11_終了_60分以降.html">次 → 終了</a>
+  </div>
+</section>
+
+<section class="lane" data-r="net">
+  <h2>ネットワーク / 15–60分</h2>
+  <div class="sub">遮断と迂回の実施。影響の二次監視。参照: 06</div>
+  <div class="progress"><div class="bar"></div></div>
+  <ul class="check">
+    <li><div class="box">✓</div><div class="content"><div class="ttl">攻撃源の特徴量を決めてから遮断</div><div class="hint">IP / AS / UA / パス / レート。根拠を1つに絞って書く。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">ACL / WAF ルールを上書きでなく「追加」</div><div class="hint">YAMAHA <span class="kbd">ip pp secure filter</span> は上書きされやすい。差分のみ追加する運用。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">AWS: WAF Rate-Based / SG / NACL の優先順位を整理</div><div class="hint">Rate-Based を先、恒久対策として SG、広域遮断は NACL。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">遮断後の「正常側」への影響をモニタ</div><div class="hint">誤遮断が起きていないか。ヘルスチェックや内部通信。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">DNS 切替の是非を検討</div><div class="hint">TTL・切替先の可否・戻し条件を先に決める。</div></div></li>
+    <li><div class="box">✓</div><div class="content"><div class="ttl">スループット・セッション数の時系列を保存</div><div class="hint">後のレポートと振り返りに必須。スクリーンショットで可。</div></div></li>
+  </ul>
+  <div class="note">⚠ 遮断の効果は2–5分で現れる想定。即効性がなければ「観測点のズレ」を疑う。</div>
+  <div class="actions">
+    <button class="btn" onclick="resetLane()">チェックをリセット</button>
+    <a class="btn" href="11_終了_60分以降.html">次 → 終了</a>
+  </div>
+</section>
+
+</main>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const lanes = document.querySelectorAll('.lane');
+  const KEY = 'hciccc:10';
+  const state = JSON.parse(localStorage.getItem(KEY) || '{}');
+  function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
+  function currentRole(){ const a = document.querySelector('.tab.active'); return a ? a.dataset.r : 'phone'; }
+  function updateProgress(role){
+    const lane = document.querySelector(`.lane[data-r="${role}"]`);
+    const items = lane.querySelectorAll('ul.check li');
+    const done = lane.querySelectorAll('ul.check li.done').length;
+    const pct = items.length ? Math.round(done/items.length*100) : 0;
+    lane.querySelector('.bar').style.width = pct + '%';
+  }
+  function applyState(){
+    lanes.forEach(lane=>{
+      const role = lane.dataset.r;
+      lane.querySelectorAll('ul.check li').forEach((li,i)=>{
+        if(state[role+':'+i]) li.classList.add('done');
+      });
+      updateProgress(role);
+    });
+  }
+  tabs.forEach(t => t.addEventListener('click', ()=>{
+    tabs.forEach(x=>x.classList.remove('active'));
+    lanes.forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.querySelector(`.lane[data-r="${t.dataset.r}"]`).classList.add('active');
+  }));
+  lanes.forEach(lane=>{
+    const role = lane.dataset.r;
+    lane.querySelectorAll('ul.check li').forEach((li,i)=>{
+      li.addEventListener('click', ()=>{
+        li.classList.toggle('done');
+        state[role+':'+i] = li.classList.contains('done');
+        save(); updateProgress(role);
+      });
+    });
+  });
+  function resetLane(){
+    const role = currentRole();
+    const lane = document.querySelector(`.lane[data-r="${role}"]`);
+    lane.querySelectorAll('ul.check li').forEach((li,i)=>{
+      li.classList.remove('done'); delete state[role+':'+i];
+    });
+    save(); updateProgress(role);
+  }
+  applyState();
+</script>
+</body>
+</html>
