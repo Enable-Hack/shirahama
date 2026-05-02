@@ -30,6 +30,56 @@ from ..llm import (
     Signal,
 )
 
+# ─── 本番環境 whitelist (白浜本番向け / 18_§9 由来) ─────────
+# 配布アカウント由来の活動は全て drop する。これらは「攻撃に使われない」と
+# 16_本番環境クイックリファレンス §0 で明記されている = 攻撃者は別アカウントから来る。
+KNOWN_GOOD_USERS: frozenset[str] = frozenset({
+    "manage",   # 配布管理アカウント (両機 wheel)
+    "root",     # 配布 root
+    "admin",    # NW 機器管理
+    "vty",      # NW 機器 vty
+    "enable",   # NW 機器 enable
+})
+
+# 自チーム (whiskey 班 / booth11-15) が DHCP で割り当てられる帯域。
+# 競技中、自チーム 5 人の偵察トラフィック (tail / dig / curl 確認) を
+# 「攻撃者として誤認」しないために除外する。
+# 配布レンジは 16_本番環境クイックリファレンス §2.2 で 10.1.11.50-99。
+def _is_team_ip(ip: str) -> bool:
+    """自チーム DHCP 配布レンジ 10.1.11.50-99 の判定。"""
+    if not ip:
+        return False
+    parts = ip.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        if parts[0] == "10" and parts[1] == "1" and parts[2] == "11":
+            last = int(parts[3])
+            return 50 <= last <= 99
+    except ValueError:
+        return False
+    return False
+
+
+def _is_known_good(signal) -> bool:
+    """配布アカウント由来 / 自チーム IP 由来かどうか判定。
+    True なら drop すべき (Mock も Claude も呼ばない)。
+
+    判定ロジック:
+        1. evidence.user が KNOWN_GOOD_USERS にあれば drop
+        2. evidence.ip が自チーム DHCP レンジなら drop
+        3. それ以外は通す
+    """
+    ev = signal.evidence or {}
+    user = ev.get("user", "") or ""
+    ip = ev.get("ip", "") or ""
+    if user in KNOWN_GOOD_USERS:
+        return True
+    if _is_team_ip(ip):
+        return True
+    return False
+
+
 # ─── ユーティリティ ──────────────────────────────────────
 _SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
@@ -94,12 +144,35 @@ class MockBackend(LLMBackend):
         self.recent_signals: deque[Signal] = deque(maxlen=self._WINDOW)
         self.applied_rule_ids: set[str] = set()
         self.signal_counts: dict[str, int] = defaultdict(int)
+        self.filtered_count: int = 0  # whitelist で drop した累積件数
 
     def name(self) -> str:
         return "mock-rulebased-v1"
 
+    # ─── 本番 whitelist フィルタ ─────────────────────────
+    def filter_known_good(self, signals: list[Signal]) -> list[Signal]:
+        """
+        配布アカウント / 自チーム IP 由来のシグナルを除外する。
+        18_§9「攻撃は別アカウントから来る」前提に基づく。
+
+        この処理は Claude API 呼び出しの前段に置くことで、
+        自チームの偵察トラフィックが API コストとして発生するのを防ぐ。
+        """
+        kept: list[Signal] = []
+        dropped = 0
+        for s in signals:
+            if _is_known_good(s):
+                dropped += 1
+                continue
+            kept.append(s)
+        self.filtered_count += dropped
+        return kept
+
     # ─── 提案生成 ────────────────────────────────────────
     def propose_patches(self, signals: list[Signal]) -> list[PatchProposal]:
+        # 本番 whitelist で配布アカウント / 自チーム IP 由来を drop
+        signals = self.filter_known_good(signals)
+
         # 観測を記憶
         for s in signals:
             self.recent_signals.append(s)
@@ -150,6 +223,11 @@ class MockBackend(LLMBackend):
             f"【MockBackend 判定結果】受信シグナル {len(signals)} 件、"
             f"生成提案 {len(patches)} 件。"
         )
+        if self.filtered_count > 0:
+            lines.append(
+                f"配布アカウント / 自チーム IP 由来として除外: 累積 {self.filtered_count} 件 "
+                f"(18_§9 既侵害前提による whitelist 適用)。"
+            )
 
         # 種別ごとの件数
         counts: dict[str, int] = defaultdict(int)
@@ -365,6 +443,315 @@ class MockBackend(LLMBackend):
             ),
         ]
 
+    def _handle_webapp_bruteforce(
+        self,
+        signals: Sequence[Signal],
+    ) -> list[PatchProposal]:
+        """Web 認証エンドポイントへの brute force: 送信元 IP を block。
+        analyzer の _detect_auth_bruteforce で IP 単位の集約検知を経た
+        シグナルなので、確度は高い (count >= 10)。
+        """
+        proposals: list[PatchProposal] = []
+        for s in signals:
+            ip = s.evidence.get("ip", "")
+            if not ip:
+                continue
+            count = s.evidence.get("count", 0)
+            proposals.append(PatchProposal(
+                rule_id=_rule_id("webapp-brute-ip", ip, "header", "equals", ip),
+                target="/",
+                match_type="header",
+                match_operator="equals",
+                match_value=ip,
+                action="block",
+                confidence=0.90,
+                rationale_ja=(
+                    f"Web 認証エンドポイント (wp-login / xmlrpc / admin) への "
+                    f"POST が IP {ip} から {count} 回観測されました。"
+                    f"閾値 {s.evidence.get('threshold', 10)} を超過したため "
+                    f"送信元 IP を block 対象とします。"
+                ),
+            ))
+        return proposals
+
+    def _handle_webapp_scanner(
+        self,
+        signals: Sequence[Signal],
+    ) -> list[PatchProposal]:
+        """攻撃ツール UA を block。nikto/wpscan/sqlmap 等の自己申告 UA は
+        正規ブラウザでは出ないので確度高い。
+        """
+        n = len(signals)
+        match_value = (
+            r"(?i)(nikto|wpscan|sqlmap|nmap|masscan|"
+            r"acunetix|nuclei|burp|gobuster|dirbuster)"
+        )
+        return [PatchProposal(
+            rule_id=_rule_id(
+                "webapp-scanner-ua", "*", "header", "regex", match_value
+            ),
+            target="*",
+            match_type="header",
+            match_operator="regex",
+            match_value=match_value,
+            action="block",
+            confidence=0.85,
+            rationale_ja=(
+                f"攻撃ツール由来 User-Agent を {n} 件観測しました。"
+                f"既知スキャナの自己申告 UA を block 対象とします。"
+            ),
+        )]
+
+    def _handle_webapp_auth(
+        self,
+        signals: Sequence[Signal],
+    ) -> list[PatchProposal]:
+        """単発の auth endpoint アクセス。誤検知が多いので log のみ。
+        ブルートに発展した場合は webapp_bruteforce が別途 block を提案する。
+        """
+        n = len(signals)
+        match_value = (
+            r"(?i)/(wp-login\.php|xmlrpc\.php|"
+            r"administrator/|admin/login|wp-admin/)|/?\?author=\d+"
+        )
+        return [PatchProposal(
+            rule_id=_rule_id(
+                "webapp-auth-watch", "*", "path", "regex", match_value
+            ),
+            target="*",
+            match_type="path",
+            match_operator="regex",
+            match_value=match_value,
+            action="log",
+            confidence=0.50,
+            rationale_ja=(
+                f"認証エンドポイント / author 列挙への単発アクセスを "
+                f"{n} 件観測しました。誤検知が多いため log のみ。"
+                f"集約閾値超過時は webapp_bruteforce で block 提案します。"
+            ),
+        )]
+
+    def _handle_webapp_dotfile(
+        self,
+        signals: Sequence[Signal],
+    ) -> list[PatchProposal]:
+        """dotfile (.env / .git / .my.cnf 等) 直叩きを block。
+        正規ブラウザでは到達しない。
+        """
+        n = len(signals)
+        match_value = (
+            r"/\.(my\.cnf|env|git/|htaccess|htpasswd|"
+            r"ssh/|aws/|npmrc|netrc|DS_Store)"
+        )
+        return [PatchProposal(
+            rule_id=_rule_id(
+                "webapp-dotfile", "*", "path", "regex", match_value
+            ),
+            target="*",
+            match_type="path",
+            match_operator="regex",
+            match_value=match_value,
+            action="block",
+            confidence=0.95,
+            rationale_ja=(
+                f"dotfile (.env / .my.cnf / .git 等) への直接アクセスを "
+                f"{n} 件観測しました。情報漏洩リスク高、block します。"
+            ),
+        )]
+
+    def _handle_webapp_upload_php(
+        self,
+        signals: Sequence[Signal],
+    ) -> list[PatchProposal]:
+        """uploads/ 配下の PHP/CGI 実行可能ファイル = webshell 高確度。"""
+        n = len(signals)
+        match_value = (
+            r"(?i)/(uploads?|tmp|cache|temp)/"
+            r"[^?\s]*\.(php\d?|phtml|phar|pl|cgi|jsp)"
+        )
+        return [PatchProposal(
+            rule_id=_rule_id(
+                "webapp-upload-php", "*", "path", "regex", match_value
+            ),
+            target="*",
+            match_type="path",
+            match_operator="regex",
+            match_value=match_value,
+            action="block",
+            confidence=0.95,
+            rationale_ja=(
+                f"uploads/tmp/cache 配下の PHP/CGI 実行可能ファイルを "
+                f"{n} 件観測しました。webshell 設置の高確度シグナルとして "
+                f"block します。"
+            ),
+        )]
+
+    def _handle_path_scan(
+        self,
+        signals: Sequence[Signal],
+    ) -> list[PatchProposal]:
+        """同一パス連打: rate_limit 提案。誤検知 (CDN warmup 等) もあるので
+        block ではなく rate_limit。
+        """
+        proposals: list[PatchProposal] = []
+        for s in signals:
+            count = s.evidence.get("count", 0)
+            proposals.append(PatchProposal(
+                rule_id=_rule_id(
+                    "path-scan", s.path, "path", "equals", s.path
+                ),
+                target=s.path,
+                match_type="path",
+                match_operator="equals",
+                match_value=s.path,
+                action="rate_limit",
+                confidence=0.65,
+                rationale_ja=(
+                    f"パス {s.path} への連続アクセスを {count} 回観測しました。"
+                    f"偵察 / brute の前段の可能性があり rate_limit を提案します。"
+                ),
+            ))
+        return proposals
+
+    def _handle_dns(
+        self,
+        signals: Sequence[Signal],
+    ) -> list[PatchProposal]:
+        """DNS 異常: tag に応じて action を変える。
+        unauthorized-update → critical block 提案
+        axfr-attempt → block
+        amplification → rate_limit
+        """
+        proposals: list[PatchProposal] = []
+        seen_tags: set[str] = set()
+        for s in signals:
+            tag = s.evidence.get("pattern_tag", "")
+            if tag in seen_tags:
+                continue
+            seen_tags.add(tag)
+            if "unauthorized" in tag:
+                action: Action = "block"
+                conf = 0.95
+                msg = "認証なしでの DNS レコード更新成功を検知。即時 block を強く推奨。"
+            elif "axfr" in tag:
+                action = "block"
+                conf = 0.85
+                msg = "AXFR (ゾーン転送) 試行を検知。情報漏洩リスク、block 推奨。"
+            elif "amplification" in tag:
+                action = "rate_limit"
+                conf = 0.70
+                msg = "DNS amplification 兆候 (ANY クエリ比率高)。rate_limit を提案。"
+            else:
+                action = "log"
+                conf = 0.50
+                msg = "DNS 異常パターンを検知 (詳細確認要)。"
+            proposals.append(PatchProposal(
+                rule_id=_rule_id("dns", tag, "header", "contains", tag),
+                target="dns/*",
+                match_type="header",
+                match_operator="contains",
+                match_value=tag,
+                action=action,
+                confidence=conf,
+                rationale_ja=f"[{tag}] {msg}",
+            ))
+        return proposals
+
+    def _handle_auth(
+        self,
+        signals: Sequence[Signal],
+    ) -> list[PatchProposal]:
+        """SSH brute / privesc: 送信元 IP block + 全社注意喚起レベル。"""
+        proposals: list[PatchProposal] = []
+        for s in signals:
+            ip = s.evidence.get("ip", "")
+            tag = s.evidence.get("pattern_tag", "")
+            count = s.evidence.get("count", 0)
+            if ip and "brute" in tag:
+                proposals.append(PatchProposal(
+                    rule_id=_rule_id(
+                        "auth-ssh-brute", ip, "header", "equals", ip
+                    ),
+                    target="/",
+                    match_type="header",
+                    match_operator="equals",
+                    match_value=ip,
+                    action="block",
+                    confidence=0.90,
+                    rationale_ja=(
+                        f"SSH brute force from {ip} ({count} 回失敗)。"
+                        f"送信元 IP を block 推奨。"
+                    ),
+                ))
+        return proposals
+
+    def _handle_privesc(
+        self,
+        signals: Sequence[Signal],
+    ) -> list[PatchProposal]:
+        """pkexec PwnKit / sudo 不正: critical advisory (人間判断要)。"""
+        n = len(signals)
+        return [PatchProposal(
+            rule_id=_rule_id(
+                "privesc-alert", "*", "path", "contains", "privesc"
+            ),
+            target="*",
+            match_type="path",
+            match_operator="contains",
+            match_value="privesc",
+            action="advisory",
+            confidence=0.85,
+            rationale_ja=(
+                f"権限昇格試行 (pkexec/sudo) を {n} 件観測しました。"
+                f"既に root 権限取得済みの可能性が高く、"
+                f"WAF 層では遮断不能。即時にホスト隔離 + 影響範囲調査を推奨。"
+            ),
+        )]
+
+    def _handle_mail(
+        self,
+        signals: Sequence[Signal],
+    ) -> list[PatchProposal]:
+        """メール異常: open relay / SPF 失敗 / burst を action 別に提案。"""
+        proposals: list[PatchProposal] = []
+        seen: set[str] = set()
+        for s in signals:
+            tag = s.evidence.get("pattern_tag", "")
+            ip = s.evidence.get("ip", "")
+            key = f"{tag}|{ip}"
+            if key in seen:
+                continue
+            seen.add(key)
+            if "relay" in tag or "burst" in tag:
+                action: Action = "block"
+                conf = 0.85
+                msg = "open relay 悪用 / 送信 burst を検知。送信元を block 推奨。"
+            elif "spf" in tag or "dkim" in tag:
+                action = "log"
+                conf = 0.55
+                msg = "SPF/DKIM 失敗 = なりすまし候補。log 強化。"
+            elif "sasl" in tag:
+                action = "block"
+                conf = 0.80
+                msg = "SMTP AUTH brute force。送信元 block 推奨。"
+            else:
+                action = "log"
+                conf = 0.50
+                msg = "メール異常パターン (詳細確認要)。"
+            proposals.append(PatchProposal(
+                rule_id=_rule_id(
+                    "mail", tag, ip or "*", "contains", tag
+                ),
+                target="mail/*",
+                match_type="header",
+                match_operator="contains",
+                match_value=tag if not ip else f"{tag}|{ip}",
+                action=action,
+                confidence=conf,
+                rationale_ja=f"[{tag}] {msg}" + (f" 送信元={ip}" if ip else ""),
+            ))
+        return proposals
+
     def _handle_unknown(self, signals: Sequence[Signal]) -> list[PatchProposal]:
         """未知のシグナル種別: advisory のみ"""
         sample = signals[0]
@@ -407,4 +794,14 @@ class MockBackend(LLMBackend):
         "xss": _handle_xss,
         "path_traversal": _handle_path_traversal,
         "cmdi": _handle_cmdi,
+        "webapp_auth": _handle_webapp_auth,
+        "webapp_bruteforce": _handle_webapp_bruteforce,
+        "webapp_scanner": _handle_webapp_scanner,
+        "webapp_dotfile": _handle_webapp_dotfile,
+        "webapp_upload_php": _handle_webapp_upload_php,
+        "path_scan": _handle_path_scan,
+        "dns": _handle_dns,
+        "auth": _handle_auth,
+        "privesc": _handle_privesc,
+        "mail": _handle_mail,
     }
