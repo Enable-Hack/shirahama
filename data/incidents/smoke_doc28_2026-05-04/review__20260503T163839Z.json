@@ -1,0 +1,47 @@
+{
+  "skill": "review",
+  "incident_id": "smoke_doc28_2026-05-04",
+  "timestamp": "2026-05-03T16:38:39Z",
+  "actor": "ai_auto",
+  "inputs": {
+    "hearing_path": "~/Desktop/shirahama_test.md",
+    "incident_window": "14:00-14:08",
+    "host": "victor",
+    "checks_consumed": [
+      "check-known-attacker-ip",
+      "check-bind-allow-update"
+    ]
+  },
+  "outputs": {
+    "comparison": [
+      {
+        "axis": "obuchi 在席",
+        "customer": "今日休み",
+        "log": "10.1.129.10 から ssh",
+        "verdict": "mismatch"
+      }
+    ],
+    "judgment_recommendation": {
+      "primary": "D",
+      "confidence": 0.85,
+      "rationale": "既侵害 IP 由来 + 顧客盲点",
+      "alternative": "C",
+      "alt_condition": "obuchi 氏に確認可"
+    },
+    "scope_proposal": {
+      "in_scope": [
+        "obuchi/.ssh/authorized_keys 退避"
+      ],
+      "out_of_scope_logged": [
+        "bravo named.conf の精密検査"
+      ]
+    }
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "不一致 1 件、判定 D 推奨"
+  },
+  "next_skills": [
+    "/playbook:ransomware"
+  ]
+}

@@ -122,3 +122,38 @@ python scripts/preprocess/parse_maillog.py /tmp/check_dovecot_maillog.log > /tmp
 - 連鎖先 check: [check-rainloop-cve29360.md](check-rainloop-cve29360.md)、[check-known-attacker-ip.md](check-known-attacker-ip.md)
 - analyzer 該当: `agent/analyzer.py` `MAIL_PATTERNS` (`mail/sasl-failed`)
 - 既存ドキュメント: 16_:#22 / 16_:2.4 / 14_:6.9 (doveconf -n 全文)
+
+## 6. JSON 永続化（HTML dashboard 連携）
+
+調査が完了したら、判定結果を JSON で出力し helper に渡す。helper がメタデータ (skill / incident_id / timestamp / actor) を補完して `data/incidents/<INCIDENT_ID>/check-dovecot-passdb-pam__<ts>.json` に保存する。
+
+```bash
+cat <<'JSON_EOF' | scripts/emit_skill_json.sh check-dovecot-passdb-pam
+{
+  "inputs": {
+    "target_host": "victor | bravo | both",
+    "known_ips": ["...必要なら..."]
+  },
+  "outputs": {
+    "patterns_matched": [
+      {"id": "A", "label": "...§3 判定基準のパターンA...", "verdict": "🚨 | ⚠️ | ❌"},
+      {"id": "B", "label": "...§3 判定基準のパターンB...", "verdict": "🚨 | ⚠️ | ❌"}
+    ],
+    "evidence": [
+      "<§1 で取得した実ログから 2-3 行の重要なものを抜粋>"
+    ]
+  },
+  "verdict": {
+    "status": "🚨 | ⚠️ | ✅ | info",
+    "summary": "<§4 で出した判定 1-2 行を再掲>"
+  },
+  "next_skills": ["/playbook:..." または "/check:..."]
+}
+JSON_EOF
+```
+
+- `patterns_matched` の `id` は §3 判定基準のパターン (A/B/C/D/E/F 等) と対応させる
+- `evidence` は §1 で取得した実ログから 2-3 行抜粋 (PII / 機密に注意)
+- `verdict.status` は §4 で出した判定と一致させる
+- helper が `scripts/emit_skill_json.sh` 経由で `INCIDENT_ID` env (= /incident から伝播) を拾い、`data/incidents/${INCIDENT_ID}/check-dovecot-passdb-pam__<ts>.json` に永続化
+- `/incident` を経由せず単独実行した場合は `<auto-id>_unscoped` 配下に出る (それでも dashboard には載る)

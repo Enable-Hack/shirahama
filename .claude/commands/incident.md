@@ -28,6 +28,39 @@ description: 電話受電起点でログ取得 → analyzer → Mock → Claude 
 | **❌ 触禁: VPN 入口** | `133.42.49.151` (運営機器) |
 | 報告先 PukiWiki | `http://133.42.49.140/trouble_ticket_137/index.php` (whiskey / E5mA9cF3) |
 
+## §0.4 /preflight 直前状態の取り込み（任意 / 5/4 追加）
+
+受電直後に `/preflight` が走っている場合、その JSON 出力を **analyzer 判断材料 + Claude 推論コンテキスト** として読み込む。`/preflight` 未実行でもスキップして §1 に進める (後方互換)。
+
+```bash
+PREFLIGHT_CONTEXT=""
+if [ -f /tmp/preflight_state.json ]; then
+    echo "─── /incident §0.4 /preflight 直前状態 (参考) ───"
+    jq -r '.outputs | to_entries[] |
+           "  [" + .key + "]" ,
+           ( .value.anomalies // []
+             | .[] | "    " + (.severity // "?") + " " + (.kind // "?") + ": " + (.detail // "?") )' \
+        /tmp/preflight_state.json 2>/dev/null || echo "  (preflight JSON parse 失敗 → skip)"
+
+    # /etc 配下に直近変更があれば §4 Claude 推論にブースト指示として渡す
+    ETC_CHANGES="$(jq -r '.outputs | to_entries[] | .value.etc_changed_recently[]?' /tmp/preflight_state.json 2>/dev/null | sort -u)"
+    if [ -n "$ETC_CHANGES" ]; then
+        echo "  ⚠️ 直近 1h で /etc 配下に変更があります:"
+        echo "$ETC_CHANGES" | sed 's/^/    /'
+        echo "  → §4 Claude 推論時に「改ざんの可能性」として渡す"
+    fi
+
+    # outputs 全体を JSON 文字列として §4 に export
+    PREFLIGHT_CONTEXT="$(jq -c '.outputs' /tmp/preflight_state.json 2>/dev/null || echo '{}')"
+    echo ""
+else
+    echo "─── /incident §0.4 /preflight 未実行 (推奨: /preflight 後に /incident) ───"
+fi
+export PREFLIGHT_CONTEXT
+```
+
+`PREFLIGHT_CONTEXT` は §4 の python script (Claude 推論段) で `os.environ['PREFLIGHT_CONTEXT']` 経由で読み込まれ、`ClaudeBackend.propose_patches(..., preflight_context=...)` に渡される。
+
 ## §0.5 既侵害前提（重要 / 18_§9 由来）
 
 - **配布アカウント (manage / root / admin / vty / enable) を使った攻撃は来ない** — これらの IP / user 由来のシグナルは Mock backend で drop してよい
@@ -117,10 +150,27 @@ python scripts/preprocess/parse_clf.py /tmp/incident_access.log \
 
 echo "  /tmp/access.log: $(wc -l < /tmp/access.log) 行 (フィルタ後)"
 
-# secure / named / maillog / auth は raw のままで OK
-# (agent/analyzer.py の run() が incident_*.log 名を fname 配列に登録済 — 行ベース)
+# secure / named / maillog / auth は syslog 形式 (年なし)。
+# 「今日の月日 + HH:MM 範囲」で絞る (古い brute 痕跡が時間窓内のシグナルに混ざらないように)
+# ※ analyzer が同名ファイルを読むので overwrite する。raw 全文は victor/bravo に残っている
+START_HM="${WINDOW%-*}"
+END_HM="${WINDOW#*-}"
+TODAY_PREFIX="$(date -u +'%b %e')"   # "May  3" (BSD/GNU 共通の space-padded 形式 = syslog と同じ)
+
+filter_syslog() {
+    local f="$1"
+    [ ! -f "$f" ] && return
+    local before=$(wc -l < "$f")
+    awk -v today="$TODAY_PREFIX" -v start="$START_HM" -v end="$END_HM" '
+        index($0, today) == 1 {
+            hm = substr($3, 1, 5)
+            if (hm >= start && hm <= end) print
+        }' "$f" > "${f}.win" && mv "${f}.win" "$f"
+    echo "  $f: $before → $(wc -l < $f) 行 (時間窓フィルタ後)"
+}
+
 for f in /tmp/incident_secure.log /tmp/incident_named.log /tmp/incident_maillog.log /tmp/incident_auth.log; do
-    [ -f "$f" ] && echo "  $f: $(wc -l < $f) 行 (フィルタなし、analyzer が処理)"
+    filter_syslog "$f"
 done
 ```
 
@@ -130,7 +180,7 @@ shirahama ディレクトリ配下で `PYTHONPATH=.` を付けて実行する（
 
 ```bash
 cd "${SHIRAHAMA_DIR:-/Users/ryu/Desktop/shirahama}"
-PYTHONPATH=. python3 -c "
+PYTHONPATH=. ${SHIRAHAMA_PY:-python3} -c "
 from agent import analyzer
 signals = analyzer.run('/tmp')
 print(f'─── /incident §3 analyzer ───')
@@ -146,17 +196,33 @@ for s in signals:
 
 `.env` から ANTHROPIC_API_KEY を読み込み（無ければ Mock 層だけで完走）。
 
+未分類ログ (analyzer の 41 pattern にマッチしなかった行) は **Claude に丸投げするとトークン爆発** するので、Mock で次の 3 段ふるいを通す:
+
+1. システムノイズ (pam_unix session / sshd preauth disconnect / systemd-user session 等) を `_NOISE_PATTERNS` で drop
+2. 配布アカウント / 自チーム IP (10.1.11.50-99) を drop (既存)
+3. **時間窓ベースの cross-reference**:
+   - 窓内 → 保持
+   - 窓外でも `attacker_ips` (signals に出現した IP) を含む → 保持 (forensic context)
+   - 窓外でも `10.1.129.0/24` (§0.5 既知侵害 IP) を含む → 保持
+   - それ以外の窓外 → drop
+
+実測: 1896 件 → 63 件 (97% 削減) で動作確認済。
+
 ```bash
 cd "${SHIRAHAMA_DIR:-/Users/ryu/Desktop/shirahama}"
 [ -f .env ] && export $(grep -v '^#' .env | xargs)
 
-PYTHONPATH=. python3 -c "
+# §2 で計算した START / END を python に渡す (ISO 8601 UTC)
+export INCIDENT_WINDOW_START="$START"
+export INCIDENT_WINDOW_END="$END"
+
+PYTHONPATH=. ${SHIRAHAMA_PY:-python3} -c "
 import os
 from agent import analyzer
 from agent.backends.mock_backend import MockBackend
 from agent.validator import validate_patches
 
-signals = analyzer.run('/tmp')
+signals, unmatched = analyzer.run_with_unmatched('/tmp')
 
 # Mock で whitelist drop + known-bad 即出し
 mock = MockBackend()
@@ -165,16 +231,45 @@ mock_patches = mock.propose_patches(signals)
 # grey シグナルだけ Claude に集約 (API キーがあれば)
 known_bad_targets = {p.target for p in mock_patches}
 grey = [s for s in signals if s.path not in known_bad_targets]
+
+# attacker_ips を signals.evidence.ip から抽出 (forensic cross-ref 用)
+attacker_ips = set()
+for s in signals:
+    ip = (s.evidence or {}).get('ip', '') if hasattr(s, 'evidence') else ''
+    if ip:
+        attacker_ips.add(ip)
+
+# 未分類ログを 3 段ふるい (ノイズ + 時間窓 + attacker_ips cross-ref)
+win_start = os.environ.get('INCIDENT_WINDOW_START')
+win_end   = os.environ.get('INCIDENT_WINDOW_END')
+time_window = (win_start, win_end) if win_start and win_end else None
+filtered_unmatched = mock.filter_known_good_logs(
+    unmatched,
+    time_window=time_window,
+    attacker_ips=attacker_ips,
+)
+
 claude_patches = []
-if os.environ.get('ANTHROPIC_API_KEY') and grey:
+if os.environ.get('ANTHROPIC_API_KEY') and (grey or filtered_unmatched):
     from agent.backends.claude_backend import ClaudeBackend
-    claude_patches = ClaudeBackend().propose_patches(grey)
+    # §0.4 で export された PREFLIGHT_CONTEXT を取り込む (未設定なら None)
+    import json as _json
+    preflight_ctx = None
+    _pf_raw = os.environ.get('PREFLIGHT_CONTEXT', '').strip()
+    if _pf_raw:
+        try:
+            preflight_ctx = _json.loads(_pf_raw)
+        except Exception:
+            preflight_ctx = None
+    claude_patches = ClaudeBackend().propose_patches(grey, filtered_unmatched, preflight_context=preflight_ctx)
 
 all_patches = mock_patches + claude_patches
 validated = validate_patches(all_patches)
 
 print(f'─── /incident §4 判断層 ───')
 print(f'Mock: {len(mock_patches)} / Claude: {len(claude_patches)} / 検証通過: {len(validated)}')
+print(f'未分類ログ: raw={len(unmatched)} → filter後={len(filtered_unmatched)} 件 (Claude へ)')
+print(f'  攻撃者 IP cross-ref: {attacker_ips or \"(none)\"}')
 print()
 for p in validated:
     print(f'[{p.action:10}] conf={p.confidence:.2f}  rule_id={p.rule_id}')
@@ -184,6 +279,17 @@ for p in validated:
     print()
 "
 ```
+
+### 4.1 フィルタの設計トレードオフ (重要)
+
+| ケース | 挙動 | 根拠 |
+|---|---|---|
+| 窓外 + 既知侵害 IP (10.1.129.x) | **保持** | §0.5 既侵害前提。obuchi/manage の 4/24 ログイン痕跡を見逃さない |
+| 窓外 + analyzer signals に出現した IP | **保持** | 同 IP 主体の pre-window recon / persistence を Claude が時系列で見る |
+| 窓外 + 完全に未知の IP | drop | この経路は `/check:check-known-attacker-ip` が forensic で拾う責務 |
+| ts パース失敗 (raw に時刻なし or 異常 format) | **保持** | 落とすと攻撃の pivot 行を見逃すリスク。Claude に raw を渡して判定 |
+
+**「窓外 + 完全未知 IP」が抜ける** のは意図的: `/incident` は受電窓のトリアージ、深掘り forensic は `/check:*` の役割。両者を混ぜると trade-off が崩れる。
 
 ### 5. カテゴリ判定 + 次に叩くべき skill 提示
 
@@ -270,9 +376,9 @@ for p in validated:
 ### 6. 状況サマリ生成
 
 ```bash
-python -c "
+PYTHONPATH=. ${SHIRAHAMA_PY:-python3} -c "
 from agent.backends.claude_backend import ClaudeBackend
-print(ClaudeBackend().explain_to_operator_ja(signals, validated))
+print(ClaudeBackend().explain_to_operator_ja(signals, validated, filtered_unmatched))
 "
 ```
 
@@ -322,7 +428,85 @@ print(ClaudeBackend().explain_to_operator_ja(signals, validated))
 
 → この出力を **電話応対係のホワイトボード or 02 引き継ぎテンプレ末尾に転記** し、即折り返し電話。
 
+---
+
+## §8. JSON 出力 (HTML aggregator 連携 / D-1 共通スキーマ)
+
+§3 analyzer signals / §4 patches / §5 routing / §6 SOC summary / §7 customer Q を 1 つの JSON に集約し、`data/incidents/<incident_id>/incident__<timestamp>.json` に保存する。HTML aggregator (`docs/incident_dashboard.html`) はこの JSON を読み込んで incident 一覧 + 詳細パネルを描画する。
+
+### 8.1 incident_id の確定
+
+```bash
+# /incident 起動時に確定 (時間窓 + ホスト)
+TODAY="$(date -u +%Y-%m-%d)"
+WINDOW_START="${INCIDENT_WINDOW_START:-$(date -u +%H:%M)}"   # 引数 $1 から HH:MM 抽出
+HOST="${2:-victor}"                                            # 引数 $2 (主要嫌疑ホスト)
+INCIDENT_ID="${TODAY}_${WINDOW_START}_${HOST}"
+INCIDENT_DIR="data/incidents/${INCIDENT_ID}"
+mkdir -p "$INCIDENT_DIR"
+echo "INCIDENT_ID=${INCIDENT_ID}"
+echo "INCIDENT_DIR=${INCIDENT_DIR}"
+```
+
+このシェル変数を **§1〜§7 の全段階で export** しておけば、後段の /check / /review / /playbook / /report が同じディレクトリに JSON を書ける。
+
+### 8.2 JSON 書き出し（helper 経由）
+
+§7 完了後、Claude が **skill 固有部分のみ** を JSON として組み立て、`scripts/emit_skill_json.sh` に stdin で渡す。helper がメタデータ (`skill / incident_id / timestamp / actor`) を補完して `${INCIDENT_DIR}/incident__<ts>.json` に保存する。
+
+```bash
+cat <<'JSON_EOF' | scripts/emit_skill_json.sh incident --actor ai_human
+{
+  "inputs": {
+    "window": "14:00-14:30",
+    "host": "victor",
+    "logs_collected": ["access_log", "secure", "named.log", "maillog"]
+  },
+  "outputs": {
+    "analyzer_signals": [
+      {"pattern_tag": "...", "evidence": {...}, "count": "...", "severity": "..."}
+    ],
+    "mock_patches": ["..."],
+    "claude_patches": ["..."],
+    "routing": {"category": "wp-tamper|dns-tamper|ddos|phishing|ransomware", "playbook": "/playbook:..."},
+    "soc_summary": "1-2 段落の人間向け要約",
+    "customer_questions": ["...", "..."],
+    "preflight_anomalies_count": 0
+  },
+  "verdict": {
+    "status": "🚨|⚠️|✅|info",
+    "summary": "<1-2 行: 何が起きてるか + 推奨次手順>"
+  },
+  "next_skills": ["/check:check-...", "/playbook:..."]
+}
+JSON_EOF
+```
+
+helper が補完するメタデータ:
+- `skill`: `"incident"` (引数で指定)
+- `incident_id`: `INCIDENT_ID` env 経由で §8.1 で確定した値
+- `timestamp`: 実行時の ISO 8601 UTC
+- `actor`: `ai_human` (AI 提案 → 人間最終判断 + 顧客折り返し)
+
+保存先: `data/incidents/${INCIDENT_ID}/incident__<YYYYMMDDTHHMMSSZ>.json`
+
+※ `outputs.preflight_anomalies_count` は §0.4 で取り込んだ preflight 異常件数を入れておくと dashboard で「直前状態と整合」表示に使える。
+
+### 8.3 後段 skill への伝播
+
+INCIDENT_ID は env var で後段に渡す:
+
+```bash
+export INCIDENT_ID="${INCIDENT_ID}"
+export INCIDENT_DIR="${INCIDENT_DIR}"
+```
+
+/check / /review / /playbook / /report は `${INCIDENT_ID}` が渡されていれば同じディレクトリに JSON を追記する。
+
+---
+
 ## 参照
 - `19_AIパイプライン実装ガイド.md` — 詳細手順
 - `18_キャンプ知見の白浜活用方針.md` — 思想
 - `03_シナリオ別対応プレイブック.md` — カテゴリ別の対応手順
+- `docs/incident_dashboard.html` — JSON を集約表示する HTML aggregator

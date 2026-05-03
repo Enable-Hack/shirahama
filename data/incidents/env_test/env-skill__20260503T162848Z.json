@@ -1,0 +1,10 @@
+{
+  "skill": "env-skill",
+  "incident_id": "env_test",
+  "timestamp": "2026-05-03T16:28:48Z",
+  "actor": "ai_auto",
+  "verdict": {
+    "status": "info",
+    "summary": "env test"
+  }
+}

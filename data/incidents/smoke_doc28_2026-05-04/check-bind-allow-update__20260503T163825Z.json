@@ -1,0 +1,26 @@
+{
+  "skill": "check-bind-allow-update",
+  "incident_id": "smoke_doc28_2026-05-04",
+  "timestamp": "2026-05-03T16:38:25Z",
+  "actor": "ai_auto",
+  "inputs": {
+    "target_host": "bravo"
+  },
+  "outputs": {
+    "patterns_matched": [
+      {
+        "id": "A",
+        "label": "unauthorized nsupdate",
+        "verdict": "❌"
+      }
+    ],
+    "evidence": []
+  },
+  "verdict": {
+    "status": "✅",
+    "summary": "nsupdate 痕跡なし。/etc/named.conf 改ざんは別経路の可能性"
+  },
+  "next_skills": [
+    "/check:check-bind-axfr"
+  ]
+}

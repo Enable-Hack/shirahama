@@ -1,7 +1,7 @@
 """
 ai-agent: PatchProposal 検証層
 
-renderer に渡す前に必ず通す関所。LLM や backend の出力は、
+下流に渡す前に必ず通す関所。LLM や backend の出力は、
 どれほど信頼できるモデルでも必ず検証層を通す、というのが本教材の原則。
 
 これは性能問題ではなく、セキュリティ設計の基本原則である:
@@ -11,7 +11,8 @@ renderer に渡す前に必ず通す関所。LLM や backend の出力は、
     いずれも同じ思想に基づく。
 
 教材メッセージ:
-    「LLM出力を renderer に直接渡すな。必ず検証層を挟め」
+    「LLM出力を下流（実機 / 設定ファイル / 報告書）に直接渡すな。
+      必ず検証層を挟め」
 """
 from __future__ import annotations
 
@@ -131,8 +132,8 @@ def validate_patches(patches: list[PatchProposal]) -> list[PatchProposal]:
 
     教材ポイント:
         「一部だけ通す」運用は LLM 出力の場合に事故の温床になる。
-        renderer に渡すなら全件健全、そうでなければ全件差し戻して
-        観測層・記録層に残す、が安全。
+        下流（実機 / 報告書 / チケット）に渡すなら全件健全、
+        そうでなければ全件差し戻して観測層・記録層に残す、が安全。
     """
     for i, p in enumerate(patches):
         try:

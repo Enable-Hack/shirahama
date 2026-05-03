@@ -1,0 +1,67 @@
+{
+  "skill": "preflight",
+  "incident_id": "smoke_doc28_2026-05-04",
+  "timestamp": "2026-05-03T16:38:06Z",
+  "actor": "ai_auto",
+  "inputs": {
+    "target": "both",
+    "mode": "full"
+  },
+  "outputs": {
+    "victor": {
+      "ping_ms": 1.2,
+      "services": {
+        "httpd": "active",
+        "dovecot": "active",
+        "named": "missing"
+      },
+      "listen_ports": [
+        22,
+        25,
+        80
+      ],
+      "etc_changed_recently": [
+        "/etc/named.conf"
+      ],
+      "load_avg": 0.12,
+      "last_logins": [
+        "rocky@10.1.11.50",
+        "obuchi@10.1.129.10"
+      ],
+      "anomalies": [
+        {
+          "severity": "⚠️",
+          "kind": "recent_etc_change",
+          "detail": "/etc/named.conf modified 30min ago"
+        },
+        {
+          "severity": "🚨",
+          "kind": "known_attacker_login",
+          "detail": "10.1.129.10 in last"
+        }
+      ]
+    },
+    "bravo": {
+      "ping_ms": 2.1,
+      "services": {
+        "named": "active"
+      },
+      "listen_ports": [
+        22,
+        53
+      ],
+      "etc_changed_recently": [],
+      "load_avg": 0.05,
+      "last_logins": [],
+      "anomalies": []
+    }
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "victor: 2 anomalies (1🚨 1⚠️) / bravo: clean"
+  },
+  "next_skills": [
+    "/incident 14:00-14:30 victor",
+    "/check:check-known-attacker-ip"
+  ]
+}

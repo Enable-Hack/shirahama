@@ -1,0 +1,32 @@
+{
+  "skill": "incident",
+  "incident_id": "2026-05-04_14:00_victor",
+  "timestamp": "2026-05-04T05:00:00Z",
+  "actor": "ai_human",
+  "inputs": {
+    "window": "14:00-14:30",
+    "host": "victor",
+    "logs_collected": ["access_log", "secure", "named.log", "maillog"]
+  },
+  "outputs": {
+    "analyzer_signals": [
+      {"pattern_tag": "mail/sasl-failed", "evidence": {"ip": "203.0.113.45", "user": "obuchi"}, "count": 142, "severity": "high"},
+      {"pattern_tag": "auth/ssh-failed", "evidence": {"ip": "203.0.113.45"}, "count": 38, "severity": "medium"}
+    ],
+    "mock_patches": [],
+    "claude_patches": [
+      {"summary": "Dovecot に対する大量 SASL 失敗、obuchi アカウント標的", "confidence": 0.9}
+    ],
+    "routing": {"category": "phishing", "playbook": "/playbook:phishing"},
+    "soc_summary": "victor の Dovecot に対し obuchi アカウント標的の SASL brute (142 失敗 / 30 分)。同一 IP からの SSH 失敗 38 件あり、メール認証 → SSH 横展開の試行と推定。",
+    "customer_questions": [
+      "obuchi 氏は本日メール作業の予定がありましたか？",
+      "203.0.113.45 (米国 Akamai) は社内/委託業者の IP として既知ですか？"
+    ]
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "Dovecot brute (obuchi 標的) + SSH 横展開試行。即時対応推奨。"
+  },
+  "next_skills": ["/check:check-known-attacker-ip", "/check:check-courier-imap-plain", "/playbook:phishing"]
+}

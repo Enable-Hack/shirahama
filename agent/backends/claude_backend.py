@@ -58,12 +58,17 @@ class ClaudeBackend(LLMBackend):
     def name(self) -> str:
         return f"claude:{self.model}"
 
-    def propose_patches(self, signals: list[Signal]) -> list[PatchProposal]:
-        if not signals:
+    def propose_patches(
+        self,
+        signals: list[Signal],
+        unmatched_logs: list[dict] | None = None,
+        preflight_context: dict | None = None,
+    ) -> list[PatchProposal]:
+        if not signals and not unmatched_logs:
             self._last_summary = "新規に検知された異常はありません。"
             return []
 
-        user_message = self._format_user_message(signals)
+        user_message = self._format_user_message(signals, unmatched_logs, preflight_context)
         response = self.client.messages.create(
             model=self.model,
             max_tokens=2048,
@@ -87,16 +92,22 @@ class ClaudeBackend(LLMBackend):
         self,
         signals: list[Signal],
         patches: list[PatchProposal],
+        unmatched_logs: list[dict] | None = None,
     ) -> str:
         if self._last_summary:
             return self._last_summary
         # propose_patches が呼ばれていない場合のフォールバック
         return (
             f"Claude ({self.model}) による判定: "
-            f"シグナル {len(signals)} 件、提案 {len(patches)} 件。"
+            f"シグナル {len(signals)} 件、未分類ログ {len(unmatched_logs or [])} 件、提案 {len(patches)} 件。"
         )
 
-    def _format_user_message(self, signals: list[Signal]) -> str:
+    def _format_user_message(
+        self,
+        signals: list[Signal],
+        unmatched_logs: list[dict] | None = None,
+        preflight_context: dict | None = None,
+    ) -> str:
         signals_json = json.dumps(
             [
                 {
@@ -111,12 +122,36 @@ class ClaudeBackend(LLMBackend):
             ensure_ascii=False,
             indent=2,
         )
-        return (
-            "以下のシグナル列を判定し、適切な PatchProposal を提案してください。\n"
-            "JSON形式のみで応答してください。前置き・後置きは不要です。\n\n"
+
+        unmatched_json = ""
+        if unmatched_logs:
+            # Token 節約のため、最大 50 件に制限
+            unmatched_logs = unmatched_logs[:50]
+            unmatched_json = json.dumps(unmatched_logs, ensure_ascii=False, indent=2)
+
+        msg = (
+            "以下のシグナル列と、観測層をすり抜けた未分類の生ログを判定し、適切な PatchProposal を提案してください。\n"
+            "JSON形式のみで応答してください。前置き・後置きは不要です。\n"
+            "未分類ログの中に攻撃の意図（例: 大量のPOSTアクセスや未知の脆弱性スキャン）が推定できるものがあれば、それに対する提案も含めてください。\n\n"
             "【シグナル列】\n"
-            f"{signals_json}"
+            f"{signals_json}\n"
         )
+        if unmatched_json:
+            msg += f"\n【未分類ログ (最大50件)】\n{unmatched_json}\n"
+
+        if preflight_context:
+            # /preflight が捉えた直前の異常 (サービス落ち / /etc 直近変更 / 不審ポート 等) を
+            # Claude に渡し、シグナルとの整合性判断のヒントにさせる
+            preflight_json = json.dumps(preflight_context, ensure_ascii=False, indent=2)
+            msg += (
+                "\n【受電直前の preflight 異常 (直前の状態スナップショット)】\n"
+                "下記は受電直前に観測された異常です。シグナル列と矛盾しないか、また、\n"
+                "「サービス落ち」「/etc 配下の直近変更」「不審 listen ポート」が攻撃と整合する場合は、\n"
+                "改ざん/侵害の可能性として扱い、提案根拠 (rationale_ja) に明示してください。\n"
+                f"{preflight_json}\n"
+            )
+
+        return msg
 
 
 # ─── JSON 抽出・パース ──────────────────────────────────

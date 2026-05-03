@@ -20,6 +20,7 @@ ai-agent.backends.mock_backend
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import defaultdict, deque
 from typing import Callable, Sequence
 
@@ -40,6 +41,36 @@ KNOWN_GOOD_USERS: frozenset[str] = frozenset({
     "vty",      # NW 機器 vty
     "enable",   # NW 機器 enable
 })
+
+# 既侵害 IP (§0.5 既侵害前提)。/incident は時間窓を限定するが、
+# このレンジ由来の活動は窓外でも保持する (forensic context)。
+KNOWN_ATTACKER_IP_RE = re.compile(r"\b10\.1\.129\.\d{1,3}\b")
+
+# Claude に投げる前に問答無用で drop するシステムノイズ。
+# 「攻撃の物証ではないが /var/log/{secure,maillog,messages} に大量に残るチャター」
+# - pam_unix session open/close: sudo / su / systemd-user の正常ライフサイクル
+# - sshd preauth disconnect: 公開 SSH に来るランダムスキャナの自然な切断
+# - sshd Connection closed by ... [preauth]: 同上
+# - systemd-user session: ログイン時の DBus 起動
+# - named "dumping master file: rename: ... permission denied": 周期的な named 内部処理
+# - sendmail "unqualified host name": ローカル名前解決の警告 (毎分発生)
+# - sendmail "alias database not present": startup 警告
+NOISE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"pam_unix\([^)]+\):\s*session\s+(opened|closed)"),
+    re.compile(r"sshd\[\d+\]:\s*Received\s+disconnect.*\[preauth\]"),
+    re.compile(r"sshd\[\d+\]:\s*Connection\s+closed\s+by.*\[preauth\]"),
+    re.compile(r"sshd\[\d+\]:\s*Disconnected\s+from.*\[preauth\]"),
+    re.compile(r"named\[\d+\]:\s*dumping\s+master\s+file"),
+    re.compile(r"sendmail\[\d+\]:\s*My\s+unqualified\s+host\s+name"),
+    re.compile(r"sendmail\[\d+\]:\s*alias\s+database.*not\s+present"),
+    re.compile(r"systemd\[\d+\]:.*systemd-user.*session"),
+]
+
+
+def _is_noise(raw: str) -> bool:
+    """システムチャター系のノイズかどうか。True なら drop。"""
+    return any(p.search(raw) for p in NOISE_PATTERNS)
+
 
 # 自チーム (whiskey 班 / booth11-15) が DHCP で割り当てられる帯域。
 # 競技中、自チーム 5 人の偵察トラフィック (tail / dig / curl 確認) を
@@ -168,8 +199,88 @@ class MockBackend(LLMBackend):
         self.filtered_count += dropped
         return kept
 
+    def filter_known_good_logs(
+        self,
+        logs: list[dict],
+        time_window: tuple[str, str] | None = None,
+        attacker_ips: set[str] | None = None,
+    ) -> list[dict]:
+        """
+        未分類ログを Claude に渡す前のフィルタ。階層構造:
+
+        1. 配布アカウント / 自チーム IP 由来  → drop (既存)
+        2. システムノイズ (pam_unix session 等) → drop (新規)
+        3. 残りについて:
+           3-1. 時間窓内                    → 保持
+           3-2. 時間窓外で attacker_ips 由来  → 保持 (forensic context)
+           3-3. 時間窓外で 10.1.129.0/24 由来 → 保持 (§0.5 既侵害前提)
+           3-4. それ以外                    → drop
+
+        time_window が None なら時間窓フィルタは無効化 (全件 raw 文字列で残す)。
+        attacker_ips が None なら attacker_ips 突合は無効化。
+
+        ts パース失敗 (None) の行は安全側に倒して保持する。
+        - 落とすと「年跨ぎ / 異常 format の攻撃 pivot 行」を見逃すリスク
+        - Claude には raw が渡るので最終判断は AI に任せる
+        """
+        # time_window は (start_iso, end_iso) で渡される ISO 8601 文字列。
+        # 比較は文字列 lex 比較で OK (ISO 8601 は同 TZ なら lex 順 = 時系列順)
+        win_start, win_end = (time_window or (None, None))
+
+        attacker_ips = attacker_ips or set()
+        # raw 文字列内の攻撃者 IP 突合用の正規表現を組み立て
+        attacker_ip_re: re.Pattern[str] | None = None
+        if attacker_ips:
+            joined = "|".join(re.escape(ip) for ip in attacker_ips if ip)
+            if joined:
+                attacker_ip_re = re.compile(rf"\b({joined})\b")
+
+        kept: list[dict] = []
+        for log in logs:
+            user = log.get("user", "") or ""
+            ip = log.get("ip", "") or log.get("src_ip", "") or ""
+            raw = log.get("raw", "") or ""
+
+            # Layer 1: 配布アカウント / 自チーム IP
+            if user in KNOWN_GOOD_USERS:
+                continue
+            if _is_team_ip(ip):
+                continue
+
+            # Layer 2: システムノイズ
+            if raw and _is_noise(raw):
+                continue
+
+            # Layer 3: 時間窓 + IP cross-reference
+            if win_start is not None and win_end is not None:
+                ts = log.get("ts")
+                if ts is None:
+                    # パース失敗 → 安全側で保持
+                    kept.append(log)
+                    continue
+
+                in_window = win_start <= ts <= win_end
+                if in_window:
+                    kept.append(log)
+                    continue
+
+                # 窓外でも attacker_ips に含まれるなら保持
+                if attacker_ip_re and attacker_ip_re.search(raw):
+                    kept.append(log)
+                    continue
+                # 窓外でも 10.1.129.0/24 (既知侵害 IP) なら保持
+                if KNOWN_ATTACKER_IP_RE.search(raw):
+                    kept.append(log)
+                    continue
+                # それ以外の窓外行は drop
+                continue
+
+            # time_window 未指定 = 後方互換 (既存 caller 用)
+            kept.append(log)
+        return kept
+
     # ─── 提案生成 ────────────────────────────────────────
-    def propose_patches(self, signals: list[Signal]) -> list[PatchProposal]:
+    def propose_patches(self, signals: list[Signal], unmatched_logs: list[dict] | None = None) -> list[PatchProposal]:
         # 本番 whitelist で配布アカウント / 自チーム IP 由来を drop
         signals = self.filter_known_good(signals)
 
@@ -214,6 +325,7 @@ class MockBackend(LLMBackend):
         self,
         signals: list[Signal],
         patches: list[PatchProposal],
+        unmatched_logs: list[dict] | None = None,
     ) -> str:
         if not signals:
             return "新規に検知された異常はありません。"

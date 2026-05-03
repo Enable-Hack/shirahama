@@ -134,3 +134,38 @@ python scripts/preprocess/parse_secure.py /var/log/secure 2>/dev/null > /tmp/che
 - 連鎖先 check: [check-known-attacker-ip.md](check-known-attacker-ip.md)、[check-pkexec-pwnkit.md](check-pkexec-pwnkit.md)
 - analyzer 該当: `agent/analyzer.py` `SECURE_PATTERNS` (`auth/ssh-*`)
 - 既存ドキュメント: 14_:V4 / 16_:#31 / 16_:1.5 / 14_:5.9 (obuchi の last 履歴)
+
+## 6. JSON 永続化（HTML dashboard 連携）
+
+調査が完了したら、判定結果を JSON で出力し helper に渡す。helper がメタデータ (skill / incident_id / timestamp / actor) を補完して `data/incidents/<INCIDENT_ID>/check-obuchi-777-hijack__<ts>.json` に保存する。
+
+```bash
+cat <<'JSON_EOF' | scripts/emit_skill_json.sh check-obuchi-777-hijack
+{
+  "inputs": {
+    "target_host": "victor | bravo | both",
+    "known_ips": ["...必要なら..."]
+  },
+  "outputs": {
+    "patterns_matched": [
+      {"id": "A", "label": "...§3 判定基準のパターンA...", "verdict": "🚨 | ⚠️ | ❌"},
+      {"id": "B", "label": "...§3 判定基準のパターンB...", "verdict": "🚨 | ⚠️ | ❌"}
+    ],
+    "evidence": [
+      "<§1 で取得した実ログから 2-3 行の重要なものを抜粋>"
+    ]
+  },
+  "verdict": {
+    "status": "🚨 | ⚠️ | ✅ | info",
+    "summary": "<§4 で出した判定 1-2 行を再掲>"
+  },
+  "next_skills": ["/playbook:..." または "/check:..."]
+}
+JSON_EOF
+```
+
+- `patterns_matched` の `id` は §3 判定基準のパターン (A/B/C/D/E/F 等) と対応させる
+- `evidence` は §1 で取得した実ログから 2-3 行抜粋 (PII / 機密に注意)
+- `verdict.status` は §4 で出した判定と一致させる
+- helper が `scripts/emit_skill_json.sh` 経由で `INCIDENT_ID` env (= /incident から伝播) を拾い、`data/incidents/${INCIDENT_ID}/check-obuchi-777-hijack__<ts>.json` に永続化
+- `/incident` を経由せず単独実行した場合は `<auto-id>_unscoped` 配下に出る (それでも dashboard には載る)

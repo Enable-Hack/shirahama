@@ -4,11 +4,11 @@ ai-agent.analyzer
 観測層（Observation Layer）: nginx / WordPress などのログから
 構造化された Signal を抽出する。LLM 非依存のルールベース実装。
 
-4層分離における位置づけ:
-    1. 観測層（このファイル）     : logs → list[Signal]
+3層分離における位置づけ（白浜運用版）:
+    1. 観測層（このファイル）     : logs → list[Signal] + 未分類ログ
     2. 判断層（backends/）       : Signal → PatchProposal
     3. 検証層（validator.py）    : PatchProposal の健全性検証
-    4. 提案層（renderers/）      : PatchProposal → WAF 固有構文
+    （提案層 Renderer はキャンプ B 教材版にのみ存在、本フローでは未使用）
 
 教材上の意義:
     - LLM が使えなくてもここは動き続ける（可用性の下支え）
@@ -30,6 +30,7 @@ import pathlib
 import re
 import urllib.parse
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Pattern
 
 from .llm import Severity, Signal
@@ -37,6 +38,43 @@ from .llm import Severity, Signal
 
 DEFAULT_LOG_DIR = pathlib.Path("/logs")
 PATH_SCAN_THRESHOLD = 10
+
+
+# syslog 行頭タイムスタンプ: "May  3 08:19:20 ..." (年情報なし)
+_SYSLOG_TS_RE = re.compile(
+    r"^([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})"
+)
+_MONTH_MAP = {
+    "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+    "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+}
+
+
+def _parse_syslog_ts(raw: str, ref_year: int | None = None) -> str | None:
+    """syslog 形式の行頭から ISO 8601 UTC タイムスタンプを抽出する。
+    年は欠落しているので ref_year (None なら現在年) を使う。
+    パース失敗なら None。フィルタ層は None を「保持」扱いにする。
+    """
+    m = _SYSLOG_TS_RE.match(raw)
+    if not m:
+        return None
+    month = _MONTH_MAP.get(m.group(1))
+    if not month:
+        return None
+    year = ref_year if ref_year is not None else datetime.now(timezone.utc).year
+    try:
+        dt = datetime(
+            year=year,
+            month=month,
+            day=int(m.group(2)),
+            hour=int(m.group(3)),
+            minute=int(m.group(4)),
+            second=int(m.group(5)),
+            tzinfo=timezone.utc,
+        )
+    except ValueError:
+        return None
+    return dt.isoformat()
 
 
 # ─── 検出パターン（公開定数。受講者が拡張可能） ───────────
@@ -495,7 +533,7 @@ def _detect_path_scans(
 
 
 # ─── トップレベル解析関数 ─────────────────────────────────
-def analyze_nginx(entries: list[dict]) -> list[Signal]:
+def analyze_nginx(entries: list[dict], return_unmatched: bool = False) -> list[Signal] | tuple[list[Signal], list[dict]]:
     """
     nginx JSON アクセスログから Signal を抽出する。
 
@@ -503,6 +541,7 @@ def analyze_nginx(entries: list[dict]) -> list[Signal]:
     集約検出（path_scan）を組み合わせる。
     """
     signals: list[Signal] = []
+    matched_indices = set()
 
     # 単一エントリに対する検出
     detectors = [
@@ -517,15 +556,35 @@ def analyze_nginx(entries: list[dict]) -> list[Signal]:
         _detect_waf_block,
     ]
     entries = [_normalize_entry(e) for e in entries]
-    for entry in entries:
+    for i, entry in enumerate(entries):
         for detector in detectors:
             sig = detector(entry)
             if sig is not None:
                 signals.append(sig)
+                matched_indices.add(i)
 
     # 集約ベース検出
-    signals.extend(_detect_path_scans(entries))
-    signals.extend(_detect_auth_bruteforce(entries))
+    path_scan_signals = _detect_path_scans(entries)
+    signals.extend(path_scan_signals)
+    path_scan_paths = {s.path for s in path_scan_signals}
+
+    auth_brute_signals = _detect_auth_bruteforce(entries)
+    signals.extend(auth_brute_signals)
+    auth_brute_ips = {s.evidence.get("ip", "") for s in auth_brute_signals}
+
+    # 集約にマッチした行を記録
+    for i, e in enumerate(entries):
+        if e.get("path", "") in path_scan_paths:
+            matched_indices.add(i)
+        # auth_bruteforce は ip が一致し、かつ path が auth endpoint に合致するもの
+        if e.get("ip", "") in auth_brute_ips and e.get("method", "").upper() == "POST":
+            path = e.get("path", "")
+            if WEBAPP_AUTH_PATTERNS[0][0].search(path):
+                matched_indices.add(i)
+
+    if return_unmatched:
+        unmatched = [e for i, e in enumerate(entries) if i not in matched_indices]
+        return signals, unmatched
 
     return signals
 
@@ -569,15 +628,17 @@ def _detect_auth_bruteforce(entries: list[dict]) -> list[Signal]:
     return signals
 
 
-def analyze_named(lines: list[str]) -> list[Signal]:
+def analyze_named(lines: list[str], return_unmatched: bool = False) -> list[Signal] | tuple[list[Signal], list[dict]]:
     """
     BIND named.log の行ベース解析。
     18_ #36-39 を汎用化した DNS_PATTERNS でマッチ。
     """
     signals: list[Signal] = []
+    unmatched_logs: list[dict] = []
     any_count = 0
     total_query = 0
     for line in lines:
+        matched = False
         # ANY クエリ比率の集計 (amplification 判定用)
         if re.search(r"(?i)query:", line):
             total_query += 1
@@ -598,7 +659,12 @@ def analyze_named(lines: list[str]) -> list[Signal]:
                     },
                     timestamp="",
                 ))
+                matched = True
                 break  # 同一行で複数 tag は付けない
+
+        if not matched and return_unmatched:
+            unmatched_logs.append({"raw": line, "type": "named", "ts": _parse_syslog_ts(line)})
+
     # ANY 比率 amplification
     if total_query >= 50 and any_count / max(total_query, 1) >= DNS_AMPLIFICATION_RATIO:
         signals.append(Signal(
@@ -613,19 +679,23 @@ def analyze_named(lines: list[str]) -> list[Signal]:
             },
             timestamp="",
         ))
+    if return_unmatched:
+        return signals, unmatched_logs
     return signals
 
 
-def analyze_secure(lines: list[str]) -> list[Signal]:
+def analyze_secure(lines: list[str], return_unmatched: bool = False) -> list[Signal] | tuple[list[Signal], list[dict]]:
     """
     /var/log/secure (Linux) または auth.log (FreeBSD) の行ベース解析。
     SSH brute / telnet / pkexec / sudo を検出。
     18_ #1, #10, #51 を汎用化。
     """
     signals: list[Signal] = []
+    unmatched_logs: list[dict] = []
     ssh_fail_count: dict[str, int] = defaultdict(int)
 
     for line in lines:
+        matched = False
         # SSH brute 用の集計を併走
         m = re.search(r"(?i)Failed password for (?:invalid user )?\S+ from (\S+)", line)
         if m:
@@ -636,6 +706,7 @@ def analyze_secure(lines: list[str]) -> list[Signal]:
             if m:
                 # ssh-failed/invalid は集計側で出すので単発では出さない
                 if tag.startswith("auth/ssh-"):
+                    matched = True
                     break
                 severity = "high" if tag.startswith("privesc/") else "medium"
                 signals.append(Signal(
@@ -649,7 +720,11 @@ def analyze_secure(lines: list[str]) -> list[Signal]:
                     },
                     timestamp="",
                 ))
+                matched = True
                 break
+        if not matched and return_unmatched:
+            unmatched_logs.append({"raw": line, "type": "secure", "ts": _parse_syslog_ts(line)})
+
     # SSH brute 集約
     for src_ip, cnt in ssh_fail_count.items():
         if cnt >= SSH_BRUTE_THRESHOLD:
@@ -665,18 +740,22 @@ def analyze_secure(lines: list[str]) -> list[Signal]:
                 },
                 timestamp="",
             ))
+    if return_unmatched:
+        return signals, unmatched_logs
     return signals
 
 
-def analyze_maillog(lines: list[str]) -> list[Signal]:
+def analyze_maillog(lines: list[str], return_unmatched: bool = False) -> list[Signal] | tuple[list[Signal], list[dict]]:
     """
     postfix / sendmail の maillog 行ベース解析。
     18_ #31-35 を汎用化した MAIL_PATTERNS でマッチ + 送信元 burst を集計。
     """
     signals: list[Signal] = []
+    unmatched_logs: list[dict] = []
     sender_count: dict[str, int] = defaultdict(int)
 
     for line in lines:
+        matched = False
         # 単発パターン
         for pattern, tag in MAIL_PATTERNS:
             m = pattern.search(line)
@@ -692,11 +771,15 @@ def analyze_maillog(lines: list[str]) -> list[Signal]:
                     },
                     timestamp="",
                 ))
+                matched = True
                 break
         # client= の送信元 IP を集計
         m = re.search(r"client=[^\[]*\[(\d+\.\d+\.\d+\.\d+)\]", line)
         if m:
             sender_count[m.group(1)] += 1
+        
+        if not matched and return_unmatched:
+            unmatched_logs.append({"raw": line, "type": "maillog", "ts": _parse_syslog_ts(line)})
 
     # burst 検出
     for ip, cnt in sender_count.items():
@@ -713,6 +796,8 @@ def analyze_maillog(lines: list[str]) -> list[Signal]:
                 },
                 timestamp="",
             ))
+    if return_unmatched:
+        return signals, unmatched_logs
     return signals
 
 
@@ -759,6 +844,10 @@ def analyze_wordpress(entries: list[dict]) -> list[Signal]:
 
 
 def run(log_dir: pathlib.Path | str | None = None) -> list[Signal]:
+    signals, _ = run_with_unmatched(log_dir)
+    return signals
+
+def run_with_unmatched(log_dir: pathlib.Path | str | None = None) -> tuple[list[Signal], list[dict]]:
     """
     観測層のメインエントリポイント。
 
@@ -774,30 +863,41 @@ def run(log_dir: pathlib.Path | str | None = None) -> list[Signal]:
     if log_dir is not None:
         log_dir_path = pathlib.Path(log_dir)
 
-    nginx_signals = analyze_nginx(load_logs("access.log", log_dir_path))
+    nginx_signals, nginx_unmatched = analyze_nginx(load_logs("access.log", log_dir_path), return_unmatched=True)
+    
+    # analyze_wordpress doesn't support return_unmatched, so just get signals
     wp_signals = analyze_wordpress(load_logs("wp-app.log", log_dir_path))
 
     # 6 カテゴリ拡張: line-based ログ群
     # ファイル名は parse_*.py の出力 / SSH 取得時の保存名に揃える
     named_signals: list[Signal] = []
+    unmatched_logs: list[dict] = list(nginx_unmatched)
+    
     for fname in ("named.log", "incident_named.log", "bravo_named.log"):
-        named_signals.extend(analyze_named(load_text_log(fname, log_dir_path)))
+        sigs, unmatch = analyze_named(load_text_log(fname, log_dir_path), return_unmatched=True)
+        named_signals.extend(sigs)
+        unmatched_logs.extend(unmatch)
 
     secure_signals: list[Signal] = []
     for fname in (
         "secure", "incident_secure.log", "victor_secure.log",
         "auth.log", "incident_auth.log", "bravo_auth.log",
     ):
-        secure_signals.extend(analyze_secure(load_text_log(fname, log_dir_path)))
+        sigs, unmatch = analyze_secure(load_text_log(fname, log_dir_path), return_unmatched=True)
+        secure_signals.extend(sigs)
+        unmatched_logs.extend(unmatch)
 
     mail_signals: list[Signal] = []
     for fname in (
         "maillog", "incident_maillog.log",
         "victor_maillog.log", "bravo_maillog.log",
     ):
-        mail_signals.extend(analyze_maillog(load_text_log(fname, log_dir_path)))
+        sigs, unmatch = analyze_maillog(load_text_log(fname, log_dir_path), return_unmatched=True)
+        mail_signals.extend(sigs)
+        unmatched_logs.extend(unmatch)
 
-    return (
+    all_signals = (
         nginx_signals + wp_signals
         + named_signals + secure_signals + mail_signals
     )
+    return all_signals, unmatched_logs

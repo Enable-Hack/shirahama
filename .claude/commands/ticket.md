@@ -208,3 +208,37 @@ PukiWiki チケットの 5 フィールド (sccs2026_二次予選まとめ.md L.
 - `docs/04_完了報告テンプレート.md` — 顧客向け文面テンプレ (本スキルとは目的が違うので参照のみ)
 - `.claude/commands/incident.md` — トリアージ。本スキルの主入力を生成する
 - `.claude/commands/report.md` — 完了一次連絡。本スキルとペアで使う (Phase 5 → Phase 6)
+
+## 8. JSON 永続化（HTML dashboard 連携）
+
+§3 で生成した PukiWiki マークアップ + §2 抽出フィールドを JSON 化して helper に渡す。actor は `ai_human` (生成は AI、投稿は人間)。
+
+```bash
+cat <<'JSON_EOF' | scripts/emit_skill_json.sh ticket --actor ai_human
+{
+  "inputs": {
+    "triage_report_path": "<§1 で読み込んだ shirahama_test.md 等のパス>"
+  },
+  "outputs": {
+    "fields": {
+      "occurrence_time": "<発生時刻 (JST)>",
+      "trouble_content": "<事象内容>",
+      "cause": "<原因 (確定 / 推定の区別を明記)>",
+      "actions_taken": ["<対応内容を時系列で>"],
+      "recovery_verification": "<復旧確認手順 + 結果>"
+    },
+    "pukiwiki_markup": "<§3.1 で生成したマークアップ全文>",
+    "submission_url": "http://133.42.49.140/trouble_ticket_137/index.php"
+  },
+  "verdict": {
+    "status": "info",
+    "summary": "PukiWiki マークアップ生成完了。投稿は人間が手で実施"
+  },
+  "next_skills": []
+}
+JSON_EOF
+```
+
+- `actor=ai_human` で「生成は AI、投稿は人間」を明示 (§0.6 触らない哲学と整合)
+- `pukiwiki_markup` には §3.1 のテンプレ全文をそのまま入れる (改行は `\n` でエスケープ)
+- 保存先: `data/incidents/${INCIDENT_ID}/ticket__<ts>.json`

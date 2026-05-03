@@ -1,0 +1,16 @@
+{
+  "skill": "test-skill",
+  "incident_id": "smoke_test",
+  "timestamp": "2026-05-03T16:28:39Z",
+  "actor": "ai_auto",
+  "verdict": {
+    "status": "🚨",
+    "summary": "smoke test"
+  },
+  "outputs": {
+    "foo": "bar"
+  },
+  "next_skills": [
+    "/incident"
+  ]
+}

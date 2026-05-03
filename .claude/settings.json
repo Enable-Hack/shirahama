@@ -69,6 +69,7 @@
       "Bash(w)",
       "Bash(last *)",
       "Bash(ss *)",
+      "Bash(sockstat *)",
       "Bash(netstat *)",
       "Bash(ps *)",
       "Bash(pgrep *)",
@@ -129,11 +130,12 @@
     ]
   },
 
-  "_comment_env": "build mode を明示するための環境変数。SSH_* は incident.md / check-*.md が ssh 接続先を切替えるのに使う。",
+  "_comment_env": "build mode を明示するための環境変数。SSH_* は incident.md / check-*.md が ssh 接続先を切替えるのに使う。SHIRAHAMA_PY は anthropic 入りの pyenv 3.12.6 を絶対パスで指定（Homebrew python3.14 には anthropic 未導入のため）。",
   "env": {
     "SHIRAHAMA_MODE": "build",
     "SSH_VICTOR": "victor",
     "SSH_BRAVO": "bravo",
-    "SHIRAHAMA_DIR": "/Users/ryu/Desktop/shirahama"
+    "SHIRAHAMA_DIR": "/Users/ryu/Desktop/shirahama",
+    "SHIRAHAMA_PY": "/opt/homebrew/var/pyenv/versions/3.12.6/bin/python3"
   }
 }

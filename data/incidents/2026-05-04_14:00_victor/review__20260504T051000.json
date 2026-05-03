@@ -1,0 +1,45 @@
+{
+  "skill": "review",
+  "incident_id": "2026-05-04_14:00_victor",
+  "timestamp": "2026-05-04T05:10:00Z",
+  "actor": "ai_auto",
+  "inputs": {
+    "hearing_path": "~/Desktop/shirahama_test.md",
+    "incident_window": "14:00-14:30",
+    "host": "victor",
+    "checks_consumed": ["check-known-attacker-ip"]
+  },
+  "outputs": {
+    "comparison": [
+      {"axis": "影響サービス", "customer": "メールが遅い", "log": "Dovecot SASL brute 142 件", "verdict": "match"},
+      {"axis": "時間窓", "customer": "14:00 頃から", "log": "13:58 開始", "verdict": "match"},
+      {"axis": "obuchi 業務予定", "customer": "本日休暇", "log": "obuchi 標的に SASL brute 多発", "verdict": "mismatch"},
+      {"axis": "203.0.113.45", "customer": "知らない", "log": "新規 IP、obuchi 標的に集中", "verdict": "blindspot"},
+      {"axis": "過去の同種症状", "customer": "初めて", "log": "4/24 §0.5 で既侵害 IP 由来 obuchi ログイン", "verdict": "partial"}
+    ],
+    "judgment_recommendation": {
+      "primary": "D",
+      "confidence": 0.88,
+      "rationale": "不一致 1 件 (obuchi 休暇中に obuchi 標的攻撃) + 顧客盲点 1 件 (新規 IP 未認知)。攻撃進行中の可能性高。",
+      "alternative": "C",
+      "alt_condition": "obuchi 氏に直接連絡が取れ、本人不関与を確認できる場合"
+    },
+    "scope_proposal": {
+      "in_scope": [
+        "203.0.113.45 を iptables で遮断 (リーダー承認後 / playbook:phishing で提案)",
+        "obuchi/.ssh/authorized_keys 退避 (横展開ルート遮断)",
+        "Dovecot disable_plaintext_auth=yes (運用影響大、リーダー判断)"
+      ],
+      "out_of_scope_logged": [
+        "bravo toor:0:0 Backdoor Root (歴史的、現在ロック中)",
+        "BIND allow-update 過広 (受電と無関係、別 incident で対応)",
+        "AXFR allow-transfer any (恒久対応は別件)"
+      ]
+    }
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "不一致 1 + 顧客盲点 1。判定 D 推奨 (信頼度 0.88)。"
+  },
+  "next_skills": ["/playbook:phishing", "/playbook:ransomware"]
+}

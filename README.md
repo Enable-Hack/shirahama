@@ -46,14 +46,12 @@ shirahama/
 │   ├── analyzer.py                        ← 観測層: 45 regex / 38 pattern_tag + 4 集約 tag
 │   ├── llm.py                             ← 型定義 (LLMBackend / Signal / PatchProposal)
 │   ├── validator.py                       ← 検証層: 壊れた提案を弾く
-│   ├── patcher.py                         ← 統合オーケストレータ
 │   ├── prompts.py                         ← Claude system prompt
-│   ├── backends/
-│   │   ├── mock_backend.py                ← 判断層: ルールベース + whitelist
-│   │   ├── claude_backend.py              ← 判断層: Anthropic Claude (haiku-4-5)
-│   │   └── swallow_backend.py             ← 残存（現状未使用、将来ローカル LLM フォールバック用）
-│   └── renderers/
-│       └── nginx_renderer.py              ← PatchProposal → nginx ルール（実装済、現在は Claude が直接コマンド出力するため未使用）
+│   └── backends/
+│       ├── mock_backend.py                ← 判断層: ルールベース + whitelist
+│       ├── claude_backend.py              ← 判断層: Anthropic Claude (haiku-4-5)
+│       └── swallow_backend.py             ← 残存（現状未使用、将来ローカル LLM フォールバック用）
+│   ※ renderers/ と patcher.py はキャンプ B 教材専用のため削除（白浜では未使用）
 │
 ├── scripts/
 │   ├── preprocess/                        ← テキストログ → JSONL

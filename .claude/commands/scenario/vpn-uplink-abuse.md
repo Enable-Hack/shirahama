@@ -91,3 +91,33 @@ description: シナリオ③ VPN 経路 → 上流信頼を悪用した横断攻
 - 関連シナリオ:
   - [scenario/killchain-recon-rce-dbexfil.md](killchain-recon-rce-dbexfil.md) (Web 系の足場が併存する場合)
   - [scenario/dns-spoof-phish.md](dns-spoof-phish.md) (フィッシング窃取クレデンシャルでの再侵入)
+
+## 6. JSON 永続化（HTML dashboard 連携）
+
+§2 で並行起動した /check の結果を集約し、キルチェーン全体の総括を JSON で出力する。
+
+```bash
+cat <<'JSON_EOF' | scripts/emit_skill_json.sh scenario-vpn-uplink-abuse
+{
+  "inputs": {
+    "checks_dispatched": ["check-known-attacker-ip", "check-obuchi-777-hijack", "check-telnet-plain-auth", "check-pkexec-pwnkit", "check-toor-uid0", "check-at-job-persist"]
+  },
+  "outputs": {
+    "killchain_phase_results": [
+      {"phase": "vpn-entry", "checks": ["check-known-attacker-ip"], "verdict": "🚨 | ⚠️ | ✅"},
+      {"phase": "lateral-via-trust", "checks": ["check-obuchi-777-hijack", "check-telnet-plain-auth"], "verdict": "🚨 | ⚠️ | ✅"},
+      {"phase": "privilege-escalation", "checks": ["check-pkexec-pwnkit", "check-toor-uid0"], "verdict": "🚨 | ⚠️ | ✅"},
+      {"phase": "persistence", "checks": ["check-at-job-persist"], "verdict": "🚨 | ⚠️ | ✅"}
+    ],
+    "chain_completeness": "<どのフェーズまで観測できたか / 抜けているフェーズ>"
+  },
+  "verdict": {
+    "status": "🚨 | ⚠️ | ✅",
+    "summary": "<キルチェーン全体の 1-2 行総括>"
+  },
+  "next_skills": ["/playbook:ransomware", "/playbook:phishing", "/review"]
+}
+JSON_EOF
+```
+
+- 保存先: `data/incidents/${INCIDENT_ID}/scenario-vpn-uplink-abuse__<ts>.json`

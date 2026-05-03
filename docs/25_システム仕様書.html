@@ -973,7 +973,7 @@ h2:hover .anchor, h3:hover .anchor, h4:hover .anchor {
   <div class="toc-section">
     <div class="toc-section-title">§ 2 アーキテクチャ</div>
     <ul>
-      <li><a href="#s21">2.1 4 層 + 物理ゲート</a></li>
+      <li><a href="#s21">2.1 3 層 + 議論ループ + ゲート</a></li>
       <li><a href="#s22">2.2 JPCERT 決定木</a></li>
       <li><a href="#s22b">2.2b 時間軸データフロー</a></li>
       <li><a href="#s23">2.3 設計判断</a></li>
@@ -983,6 +983,7 @@ h2:hover .anchor, h3:hover .anchor, h4:hover .anchor {
   <div class="toc-section">
     <div class="toc-section-title">§ 3 コマンドリファレンス</div>
     <ul>
+      <li><a href="#cmd-preflight">3.0 /preflight</a></li>
       <li><a href="#cmd-incident">3.1 /incident</a></li>
       <li><a href="#cmd-check">3.2 /check:*</a></li>
       <li><a href="#cmd-scenario">3.3 /scenario:*</a></li>
@@ -1009,6 +1010,7 @@ h2:hover .anchor, h3:hover .anchor, h4:hover .anchor {
       <li><a href="#s52">5.2 pattern_tag 一覧</a></li>
       <li><a href="#s53">5.3 環境変数</a></li>
       <li><a href="#s54">5.4 settings.json</a></li>
+      <li><a href="#s55">5.5 変更履歴</a></li>
     </ul>
   </div>
 
@@ -1097,9 +1099,11 @@ h2:hover .anchor, h3:hover .anchor, h4:hover .anchor {
 
 <h2 id="s2"><span class="num">§ 2</span>アーキテクチャ</h2>
 
-<h3 id="s21"><span class="num">2.1</span>4 層 + 物理ゲート<a href="#s21" class="anchor">#</a></h3>
+<h3 id="s21"><span class="num">2.1</span>3 層 + 議論ループ + 物理ゲート<a href="#s21" class="anchor">#</a></h3>
 
-<p>システムは 4 つの責務分離された層 + 1 つの物理ゲートで構成される。下層に行くほど LLM 依存度が高く、最下層の物理ゲートが「LLM が暴走しても実機に届かない」を保証する。</p>
+<p>システムは 3 つの責務分離された層 (観測 → 判断 → 検証) + 議論ループ + 物理ゲートで構成される。下層に行くほど LLM 依存度が高い。<strong>「判断 → 翻訳 → 自動適用」という WAF 自動化の流れは取らない</strong> — 翻訳と実機への適用は <code>/playbook:*</code> スキルが直接 ssh コマンドで担当する。</p>
+
+<p style="font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3); letter-spacing:0.05em; margin:1.2rem 0 0.4rem;">VIEW 1 — データフロー視点 (層と責務分離)</p>
 
 <pre data-lang="diagram">/var/log/* (httpd / secure / maillog / named)
         │  ssh manage@10.1.1.{1,2} 'tail ...'
@@ -1107,30 +1111,50 @@ h2:hover .anchor, h3:hover .anchor, h4:hover .anchor {
 ┌─────────────────────────────────────────────────────┐
 │ ① 観測層  agent/analyzer.py                         │
 │   41 pattern / 6 カテゴリ汎用検出 / 決定論的         │
+│   ★ run_with_unmatched() でマッチ外も抽出            │
 └─────────────────────────────────────────────────────┘
-        │  list[Signal]
+        │  [A] list[Signal] (パターン合致)
+        │  [B] list[dict]   (未分類ログ)
         ▼
 ┌─────────────────────────────────────────────────────┐
 │ ② 判断層 1  agent/backends/mock_backend.py           │
-│   whitelist filter + known-bad 即 block / 決定論的    │
+│   ・whitelist filter (配布アカウント / 自IP) drop      │
+│   ・known-bad 即 block (sqli/xss/cmdi/path/idor)      │
+│   ・★ filter_known_good_logs([B]) で未分類も濾過    │
 └─────────────────────────────────────────────────────┘
-        │  Mock 知識外 = grey signal のみ
+        │  [A'] grey signal (Mock の知識外)
+        │  [B'] フィルタ済み未分類ログ (本当に怪しい)
         ▼
 ┌─────────────────────────────────────────────────────┐
 │ ③ 判断層 2  agent/backends/claude_backend.py         │
-│   grey の意味推定 + 顧客向け文面生成 / Claude API     │
+│   propose_patches([A'], [B']) で意味推定 + 集約       │
+│   + 顧客向け文面生成 / Claude API                     │
 └─────────────────────────────────────────────────────┘
-        │  list[PatchProposal]
+        │  list[PatchProposal] (Mock + Claude 合流)
         ▼
 ┌─────────────────────────────────────────────────────┐
 │ ④ 検証層  agent/validator.py                         │
 │   ReDoS / 壊れた regex を all-or-nothing 棄却          │
 └─────────────────────────────────────────────────────┘
-        │  健全な PatchProposal[]
+        │  健全な PatchProposal[] (画面表示)
+        ▼
+   ┌──────────────────────────────────────────┐
+   │  ＡＩ × 人間の議論 (Claude Code チャット内) │
+   │  + 25_システム仕様書.html「判定」タブで記録   │
+   │   → 4 択判定 (対応不要 / 情報提供 / 追加     │
+   │     情報待ち / 対応必要)                  │
+   └──────────────────────────────────────────┘
+        │  D 「対応必要」 のときだけ次へ
+        ▼
+┌─────────────────────────────────────────────────────┐
+│ /playbook:* で具体コマンド提示 (リーダー承認後 明記)  │
+└─────────────────────────────────────────────────────┘
+        │
         ▼
 ┌─────────────────────────────────────────────────────┐
 │ ⑤ 物理ゲート  .claude/settings.json                  │
 │   deny: 67 / ask: 37 / allow: 64                      │
+│   ※ AI が善意で nsupdate を提示しても実行されない    │
 └─────────────────────────────────────────────────────┘
         │
    ┌────┼────┐
@@ -1138,6 +1162,90 @@ h2:hover .anchor, h3:hover .anchor, h4:hover .anchor {
   拒否  確認 即実行
   (nsupdate (iptables  (ssh / dig
    systemctl) -j DROP)  / tail / ls)</pre>
+
+<p style="font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3); letter-spacing:0.05em; margin:2rem 0 0.4rem;">VIEW 2 — ファイル読み込みシーケンス視点 (T+ と読込対象)</p>
+
+<p style="font-size:13.5px; color:var(--ink-2); margin-bottom:0.6rem;">同じシステムを「いつ何のファイルが読まれるか」の側から描いた図。VIEW 1 が <em>責務</em>、VIEW 2 が <em>タイミング</em>。</p>
+
+<pre data-lang="diagram">T+      フェーズ                       Claude Code が読む / 触るファイル
+═══════════════════════════════════════════════════════════════════════
+session 開始                           .claude/settings.json   (deny/ask/allow を常駐ロード)
+                                       .env                    (ANTHROPIC_API_KEY)
+───────────────────────────────────────────────────────────────────────
+T+0:00  📞 受電 (電話)                 ─ (人間のみ、ファイル読込なし)
+───────────────────────────────────────────────────────────────────────
+T+0:01  /preflight 投入                .claude/commands/preflight.md
+        ssh 並行 (allow 即実行)         remote: /etc/* mtime, ss -tlnp, last
+───────────────────────────────────────────────────────────────────────
+T+0:02  /incident <窓> <ホスト>         .claude/commands/incident.md
+        §1 ssh tail                    remote: /var/log/{httpd,secure,maillog,named}
+                                       → /tmp/incident_*.log
+        §2 時間窓フィルタ               scripts/preprocess/parse_clf.py
+                                       → /tmp/access.log
+        §3 analyzer                    agent/analyzer.py             (41 pattern)
+        §4 Mock → grey → Claude        agent/backends/mock_backend.py
+                                       agent/backends/claude_backend.py (grey のみ)
+                                       agent/validator.py            (ReDoS 棄却)
+        §5 ルーティング                 ─ (incident.md §5.2 早見表)
+        §6 SOC summary
+        §7 📞 顧客追加質問
+───────────────────────────────────────────────────────────────────────
+T+0:10  ⚖ 判定タブで4択                ─ (人間合議、ファイル読込なし)
+        A 対応不要    → 終了
+        B 情報提供    → 終了 (注意喚起テキストのみ)
+        C 追加情報待ち → T+0:10 にループ
+        D 対応必要 ↓
+───────────────────────────────────────────────────────────────────────
+T+0:12  /check:* 複数並行              .claude/commands/check/check-*.md
+                                       (incident §5 推奨を 5〜6 本)
+───────────────────────────────────────────────────────────────────────
+T+0:15  /playbook:* 投入               .claude/commands/playbook/{ddos,phishing,...}.md
+                                       → 対策コマンド候補表示 (リーダー承認後 明記)
+───────────────────────────────────────────────────────────────────────
+T+0:18  ✋ リーダー Go/NoGo            ─ (人間)
+───────────────────────────────────────────────────────────────────────
+T+0:20  AI が承認済みコマンド実行       .claude/settings.json
+        ┌ deny  → 物理ブロック         (nsupdate / dnf / Edit(/etc/**))
+        ├ ask   → プロンプト → Yes/No  (iptables -j DROP / kill -9)
+        └ allow → 即実行               (ssh / dig / tail)
+───────────────────────────────────────────────────────────────────────
+T+0:25  /report                        .claude/commands/report.md
+                                       ~/Desktop/shirahama_test.md  (入力)
+───────────────────────────────────────────────────────────────────────
+T+90    /ticket                        .claude/commands/ticket.md
+                                       ~/Desktop/shirahama_test.md  (入力)
+═══════════════════════════════════════════════════════════════════════</pre>
+
+<div class="callout"><strong>tip</strong>VIEW 1 で「データはどう変換されるか」を、VIEW 2 で「どの md / py / settings がいつアクティブか」を同時に把握する。デバッグ時は VIEW 2 を見て該当ファイルを開けば良い。</div>
+
+<h4>2.1.1 AI ↔ 人間の議論はどこで起きるか</h4>
+
+<table>
+<thead><tr><th>場面</th><th>媒体</th><th>記録先</th></tr></thead>
+<tbody>
+<tr><td>1:1 AI 対話 (技術調査係 ↔ Claude)</td><td>Claude Code チャット</td><td>セッションログ (口頭で指揮係に共有)</td></tr>
+<tr><td>チーム合議 (受電 + analyzer / Claude 出力を見て判定)</td><td>口頭 + ホワイトボード</td><td>本書「判定」タブ (4 択ラジオ + 根拠)</td></tr>
+<tr><td>Go / NoGo 判定 (実行する/しないの最終承認)</td><td>口頭 (リーダー)</td><td>「進捗チェック」タブ Phase 2 〜 4 のチェックボックス</td></tr>
+<tr><td>実行時の追加確認 (settings.json ask 発動)</td><td>Claude Code プロンプト</td><td>セッションログ + 02 引き継ぎ追記</td></tr>
+</tbody>
+</table>
+
+<h4>2.1.2 「実際に対応するのは誰か」 (AI vs 人間の境界)</h4>
+
+<table>
+<thead><tr><th>操作</th><th>担当</th><th>理由</th></tr></thead>
+<tbody>
+<tr><td>read-only コマンド (<code>tail</code>, <code>ss</code>, <code>last</code>, <code>dig</code>, <code>journalctl</code>)</td><td><span class="tag ai">AI 即実行</span></td><td>settings.json allow。観察に時間を使わない</td></tr>
+<tr><td>軽微な書き込み (<code>chmod 700 /home/X</code>, <code>cp -p</code> でバックアップ)</td><td><span class="tag semi">AI 提案 → 人間承認 → AI 実行</span></td><td>settings.json ask が発動、人間プロンプトで Yes</td></tr>
+<tr><td>サービス停止 / iptables / kill -9</td><td><span class="tag semi">AI 提案 → 人間承認 → AI 実行</span></td><td>settings.json ask、リーダー口頭承認も必須</td></tr>
+<tr><td>設定ファイル直編集 (<code>Edit(/etc/**)</code>)</td><td><span class="tag human">人間のみ (root SSH 直)</span></td><td>settings.json deny。AI は触れない</td></tr>
+<tr><td>nsupdate / dnf install / systemctl start|stop</td><td><span class="tag human">人間のみ</span></td><td>settings.json deny。「触らない哲学」を物理化</td></tr>
+<tr><td>顧客への電話 / メール送信</td><td><span class="tag human">人間のみ</span></td><td>顧客対応の温度感調整は AI には任せない</td></tr>
+<tr><td>PukiWiki チケット投稿</td><td><span class="tag human">人間のみ</span></td><td>認証情報を Claude に渡さない方針</td></tr>
+</tbody>
+</table>
+
+<div class="callout warn"><strong>原則</strong>判定タブで「D. 対応必要」を選んだ <strong>後だけ</strong> 物理ゲートを通る。A/B/C を選んだ場合は AI も人間も実機を触らず、回答 / 注意喚起 / 追加聞き取り のみで終わる。</div>
 
 <h3 id="s22"><span class="num">2.2</span>JPCERT 決定木<a href="#s22" class="anchor">#</a></h3>
 
@@ -1217,6 +1325,9 @@ h2:hover .anchor, h3:hover .anchor, h4:hover .anchor {
 <h4>Q3. なぜ deny / ask / allow の 3 層か</h4>
 <p>「絶対実行しない」「人間判断要」「即実行」の 3 段階で粒度を分けることで、安全と速度を両立。read-only な dig / tail を毎回確認していては時間が足りない。一方で <code>iptables -j DROP</code> を allow にしては事故る。</p>
 
+<h4>Q4. なぜ未分類ログも Claude に送るのか</h4>
+<p>analyzer の 41 pattern は <strong>過去環境で見えた攻撃のスナップショット</strong>。本番では新しいログ行が出る可能性が高い。<strong>「マッチしなかった行」 を捨てると未知攻撃を取りこぼす</strong>。一方、全行を Claude に送るとコストとレイテンシが破綻する。妥協点が <code>filter_known_good_logs()</code> — 配布アカウントと自 IP の行だけ機械的に drop し、残った「謎のログ」を Claude に意味推定させる。</p>
+
 
 <!-- ═══════════════════════════════════════════════════════════════
      § 3 コマンドリファレンス
@@ -1225,9 +1336,119 @@ h2:hover .anchor, h3:hover .anchor, h4:hover .anchor {
 <h2 id="s3"><span class="num">§ 3</span>コマンドリファレンス</h2>
 
 <p class="lede">
-8 系統の slash command。<code>/incident</code> がハブ、その他はスポーク。
+9 系統の slash command。<code>/incident</code> がハブ、その他はスポーク。<code>/preflight</code> は <code>/incident</code> 投入前のベースライン取得。
 それぞれ <code>.claude/commands/</code> 配下の Markdown ファイルとして実装されており、Claude Code が読んで実行する。
 </p>
+
+<h4>3.0.0 コマンド早見表</h4>
+
+<p>各コマンドが「いつ叩かれて」「何のファイルが読まれて」「何を出すか」を 1 表に圧縮。詳細は §3.0 以降。</p>
+
+<table>
+<thead><tr><th>#</th><th>コマンド</th><th>T+</th><th>トリガ</th><th>主に読まれる</th><th>主な出力</th></tr></thead>
+<tbody>
+<tr><td>3.0</td><td><code>/preflight</code></td><td>−30 〜 +1</td><td>朝の準備 / 受電直後</td><td><code>preflight.md</code></td><td>各機サービス + 異常 flag</td></tr>
+<tr><td>3.1</td><td><code>/incident</code></td><td>+0:02</td><td>時間窓 + ホスト確定後</td><td><code>incident.md</code> → <code>analyzer.py</code> → <code>mock/claude_backend.py</code> → <code>validator.py</code></td><td>検出シグナル + 判断層 + ルーティング + SOC summary + 顧客追加質問</td></tr>
+<tr><td>3.2</td><td><code>/check:*</code></td><td>+0:10〜</td><td>incident §5 推奨</td><td><code>check/check-*.md</code> (23本)</td><td>🚨確定 / ⚠️疑い / ✅クリア</td></tr>
+<tr><td>3.3</td><td><code>/scenario:*</code></td><td>+0:12</td><td>複数 tag 同時発火</td><td><code>scenario/*.md</code> (3本)</td><td>連鎖キルチェーン検証</td></tr>
+<tr><td>3.4</td><td><code>/playbook:*</code></td><td>+0:15</td><td>判定 D 後</td><td><code>playbook/*.md</code> (5本)</td><td>封じ込めコマンド (要承認)</td></tr>
+<tr><td>3.5</td><td><code>/report</code></td><td>+0:25</td><td>封じ込め後</td><td><code>report.md</code> + <code>shirahama_test.md</code></td><td>顧客向け文面 5 種</td></tr>
+<tr><td>3.6</td><td><code>/ticket</code></td><td>+90</td><td>大会終了 30 分前</td><td><code>ticket.md</code> + <code>shirahama_test.md</code></td><td>PukiWiki マークアップ</td></tr>
+</tbody>
+</table>
+
+<div class="callout"><strong>tip</strong>常駐ロード: <code>.claude/settings.json</code> (deny/ask/allow) と <code>.env</code> (ANTHROPIC_API_KEY) は session 開始時に読まれ、以降全コマンドで効く。詳細は <a href="#s21">§2.1 VIEW 2</a>。</div>
+
+
+<!-- ─────── /preflight ─────── -->
+
+<h3 id="cmd-preflight"><span class="num">3.0</span>/preflight<a href="#cmd-preflight" class="anchor">#</a></h3>
+
+<p>受電前 / 受電直後 / <code>/incident</code> 投入前のベースライン取得。両機並行でサービス稼働 / listen ポート / 直近変更 / 負荷を取得し、異常を flag する。read-only。</p>
+
+<div class="cmd-spec">
+<dl>
+<dt>SYNOPSIS</dt><dd>/preflight [victor|bravo] [--baseline|--diff|--brief]</dd>
+<dt>EXAMPLE</dt><dd>/preflight                   (両機並行)<br>/preflight victor            (片方のみ)<br>/preflight --baseline        (結果を /tmp/preflight_baseline.json に保存)<br>/preflight --diff            (前回 baseline との差分のみ)</dd>
+<dt>FILE</dt><dd>.claude/commands/preflight.md</dd>
+<dt>PHASE</dt><dd class="prose">Phase 01 受電 (JPCERT 段階 2.1 前) — トリアージの前提</dd>
+<dt>ACTOR</dt><dd class="prose"><span class="tag ai">AI Auto</span> 受電係 or 技術調査係が <code>/incident</code> の前に叩く</dd>
+<dt>WHEN</dt><dd class="prose">電話を取った直後、または朝の準備として。受電内容と <code>/preflight</code> 結果の整合性確認に使う</dd>
+</dl>
+</div>
+
+<h4>3.0.1 内部処理 (取得項目)</h4>
+
+<table>
+<thead><tr><th>観点</th><th>victor (Rocky)</th><th>bravo (FreeBSD 想定 / OCI は Rocky)</th></tr></thead>
+<tbody>
+<tr><td>サーバ疎通</td><td><code>ping -c1 -W2 10.1.1.2</code></td><td><code>ping -c1 -W2 10.1.1.1</code></td></tr>
+<tr><td>サービス起動</td><td><code>systemctl is-active httpd dovecot named sendmail sshd mariadb php-fpm atd</code></td><td><code>service apache24/named/sendmail onestatus</code> (FreeBSD) / Rocky なら同左</td></tr>
+<tr><td>listen ポート</td><td><code>ss -tlnp</code></td><td><code>sockstat -l4</code> (FreeBSD) / <code>ss -tlnp</code> (Rocky)</td></tr>
+<tr><td>ファイル構成</td><td><code>ls -la /etc/{httpd,dovecot,mail}/</code></td><td><code>ls -la /usr/local/etc/{apache24,dovecot,namedb}/</code></td></tr>
+<tr><td>ディスク</td><td><code>df -h /var/log /var/www</code></td><td>同左</td></tr>
+<tr><td>直近変更</td><td><code>find /etc /var/www -mtime -1 -type f | head -20</code></td><td>同左</td></tr>
+<tr><td>負荷</td><td><code>uptime; ss -s</code></td><td><code>uptime; netstat -s | head</code></td></tr>
+<tr><td>ログイン履歴</td><td><code>last -10</code></td><td>同左</td></tr>
+<tr><td>プロセス棚卸</td><td><code>systemctl list-units --type=service --state=running</code></td><td><code>service -e</code> (FreeBSD)</td></tr>
+</tbody>
+</table>
+
+<p>OS 差は冒頭で <code>uname -s</code> 判定して分岐。デモ (Rocky) では両機とも systemd で読める。</p>
+
+<h4>3.0.2 異常検知ルール (出力末尾で flag)</h4>
+
+<table>
+<thead><tr><th>ルール</th><th>判定</th></tr></thead>
+<tbody>
+<tr><td>既知サービスが <code>inactive</code></td><td>🚨 落ちてる — 受電内容と整合確認 (DDoS / RCE / kill 疑い)</td></tr>
+<tr><td>load average &gt; CPU コア数 × 3</td><td>🚨 高負荷 — DDoS 疑い</td></tr>
+<tr><td>/var/log 使用率 &gt; 90%</td><td>⚠️ ログあふれ</td></tr>
+<tr><td>/etc 直近 1h 以内の変更</td><td>🚨 改ざん疑い — 具体ファイル名を出す</td></tr>
+<tr><td>listen ポートに想定外 (8080 / 31337 / 4444 / 6667 等)</td><td>⚠️ 不審サービス</td></tr>
+<tr><td><code>last</code> に既侵害 IP (10.1.129.0/24) 由来</td><td>🚨 §0.5 既侵害前提 — <code>/check:check-known-attacker-ip</code> 即起動</td></tr>
+</tbody>
+</table>
+
+<h4>3.0.3 出力例</h4>
+
+<pre data-lang="output">─── /preflight §1 victor (Linux) ───
+[OK ] ping ok
+[OK ] httpd active / dovecot active / sendmail active / sshd active / mariadb active / php-fpm active / atd active
+[--] named: &lt;missing&gt; (未インストール)
+listen: 22 23 25 80 110 143 3306 33060
+/etc 直近変更: 0 件 (1h 以内)
+disk: /var/log 7% / /var/www 4%
+load average: 0.12, 0.18, 0.22  (CPU 1 core, threshold 3.0)
+last 10: rocky@&lt;mac IP&gt;, manage@10.1.1.254, ...
+
+─── /preflight §1 bravo (Linux/Rocky) ───
+[OK ] ping ok
+[OK ] httpd active / dovecot active / named active / sendmail active / sshd active / mariadb active / atd active
+listen: 22 25 53 80 110 143 953 3306
+/etc 直近変更: 0 件 (1h 以内)
+load average: 0.05, 0.07, 0.09
+
+─── /preflight summary ───
+🚨 0 件
+⚠️ 0 件
+推奨次手順: /incident &lt;時間窓&gt; victor (受電内容に合わせて起動)</pre>
+
+<h4>3.0.4 オプション</h4>
+
+<ul>
+<li><code>--baseline</code> — 結果を <code>/tmp/preflight_baseline.json</code> に保存 (services / listen / load / etc_recent_changes)</li>
+<li><code>--diff</code> — 前回 baseline との差分のみ (例: <code>victor.services.httpd: active → inactive</code>)</li>
+<li><code>--brief</code> — 各機サマリ 1 行のみ ([🚨/⚠️/OK] カウント)</li>
+</ul>
+
+<h4>3.0.5 既知の制限</h4>
+
+<ul>
+<li>OCI NSG が SMTP 25/TCP を外部からブロックするため、bravo / victor の sendmail は外部到達不可。<code>ss -tlnp</code> での listen 確認はあくまで内部状態。</li>
+<li>FreeBSD ⇄ Rocky の OS 差は <code>uname -s</code> で分岐するが、本番 (FreeBSD bravo) で初動の検証は未実施。リハーサル時に要確認。</li>
+<li>baseline JSON 保存は POSIX shell 経由のため、特殊文字を含むサービス名 / パスは escaping に注意。</li>
+</ul>
 
 
 <!-- ─────── /incident ─────── -->
@@ -1305,15 +1526,52 @@ python scripts/preprocess/parse_clf.py /tmp/incident_access.log \
 
 <h4>3.1.5 §4 判断層出力例</h4>
 <pre data-lang="output">─── /incident §4 判断層 ───
-Mock: 1 / Claude: 2 / 検証通過: 3
+Mock: 2 / Claude: skip / 検証通過: 2
+未分類ログ: raw=1896 → filter後=63 件 (Claude へ)
+  攻撃者 IP cross-ref: (none)
 
-[block     ] conf=0.85  rule_id=mail-bf-161-33-12-212
-  target: maillog
-  match : log:contains:'rip=161.33.12.212'
-  理由  : 同一 IP からの IMAP PLAIN brute force 5 件 ...
+[block     ] conf=0.85  rule_id=mock-dns-e361edec
+  target: dns/*
+  match : header:contains:'dns/axfr-attempt'
+  理由  : [dns/axfr-attempt] AXFR (ゾーン転送) 試行を検知。情報漏洩リスク、block 推奨。
 
-[rate_limit] conf=0.72  rule_id=imap-rate-...
-  ...</pre>
+[block     ] conf=0.80  rule_id=mock-mail-29135a0b
+  target: mail/*
+  match : header:contains:'mail/sasl-failed'
+  理由  : [mail/sasl-failed] SMTP AUTH brute force。送信元 block 推奨。</pre>
+
+<h4>3.1.5b 未分類ログの 3 段ふるい (2026-05-03 強化)</h4>
+
+<p>analyzer の 41 pattern にマッチしなかったログ行は <code>run_with_unmatched()</code> で別バケツに分けられ、<strong>そのまま Claude に投げると 1000 件超でトークン爆発する</strong>ため <code>mock_backend.filter_known_good_logs()</code> で 3 段ふるいに掛ける。実測: <strong>raw 1896 件 → 63 件 (97% 削減)</strong>。</p>
+
+<table>
+<thead><tr><th>段</th><th>判定</th><th>挙動</th></tr></thead>
+<tbody>
+<tr><td>Layer 1</td><td>配布アカウント (manage/root/admin/vty/enable) or 自チーム IP (10.1.11.50-99)</td><td>drop (既存)</td></tr>
+<tr><td>Layer 2</td><td>システムノイズ <code>NOISE_PATTERNS</code> に該当 (pam_unix session / sshd preauth disconnect / systemd-user session / named dumping master file / sendmail unqualified host name 等 8 個)</td><td>drop (新規)</td></tr>
+<tr><td>Layer 3a</td><td>時間窓 (<code>INCIDENT_WINDOW_START</code> ~ <code>INCIDENT_WINDOW_END</code>) 内</td><td>保持</td></tr>
+<tr><td>Layer 3b</td><td>窓外 でも <code>attacker_ips</code> (signals.evidence.ip) を raw 内に含む</td><td>保持 (forensic context)</td></tr>
+<tr><td>Layer 3c</td><td>窓外 でも 10.1.129.0/24 (§0.5 既知侵害 IP) を raw 内に含む</td><td>保持 (既侵害前提)</td></tr>
+<tr><td>Layer 3d</td><td>上記いずれにも該当しない窓外行</td><td>drop</td></tr>
+<tr><td>fallback</td><td>ts パース失敗 (年跨ぎ / 異常 format)</td><td>保持 (安全側 / Claude に判断委譲)</td></tr>
+</tbody>
+</table>
+
+<div class="callout"><strong>設計トレードオフ</strong>「窓外 + 完全に未知の IP」からの pre-window 攻撃 (recon / persistence) は signals に上がらない限り拾えない。これは <code>/incident</code> の責務外として <code>/check:check-known-attacker-ip</code> 等の forensic スキャンで補完する設計。<code>/incident</code> は受電窓のトリアージに専念する。</div>
+
+<h4>3.1.5c タイムスタンプ正規化 (2026-05-03 追加)</h4>
+
+<p>未分類ログの dict に ISO 8601 UTC 形式の <code>ts</code> フィールドを付与する (analyzer 側で <code>_parse_syslog_ts()</code> ヘルパが <code>May  3 08:19:20</code> → <code>2026-05-03T08:19:20+00:00</code> に変換)。Claude が時系列推論する際に raw 文字列を再パースする必要がなくなる。</p>
+
+<pre data-lang="python"># 旧: タイムスタンプは raw 文字列に埋まったまま
+{'raw': 'May  3 08:19:20 bravo named[...]: ...', 'type': 'named'}
+
+# 新: 構造化された ts フィールド付き
+{'raw': 'May  3 08:19:20 bravo named[...]: ...',
+ 'type': 'named',
+ 'ts':   '2026-05-03T08:19:20+00:00'}</pre>
+
+<p>年情報は syslog format に欠落しているため <code>datetime.now().year</code> を使用。本番 5/5 までの期間内では年跨ぎ問題は発生しない。実装は <a href="../agent/analyzer.py"><code>agent/analyzer.py</code> の <code>_parse_syslog_ts()</code></a>。</p>
 
 <h4>3.1.6 §5 ルーティング提示 (例)</h4>
 <p>analyzer の pattern_tag を見て次に叩くべき <code>/check:*</code> と <code>/playbook:*</code> を提示する。例:</p>
@@ -1343,6 +1601,9 @@ Mock: 1 / Claude: 2 / 検証通過: 3
 <li>analyzer の <code>webapp/auth-bruteforce</code> 集約が wp-login.php POST × 20 を拾えていないケースが報告されている。<a href="#ex-a">§4.A</a> 参照。</li>
 <li>§2 の <code>WINDOW="$1"</code> が ad-hoc bash 経由だと位置引数を受け取れず、Claude が手動で <code>WINDOW="..."</code> 置換する必要あり。</li>
 <li>ログタイムスタンプは UTC 前提。JST から打つ場合は <strong>必ず -9h</strong> 変換。</li>
+<li><code>analyze_maillog</code> / <code>analyze_named</code> / <code>analyze_secure</code> で <code>signals.evidence.ip</code> が未設定 → <code>attacker_ips</code> cross-ref (§3.1.5b Layer 3b) が効きにくい。現状は 10.1.129.0/24 経由の Layer 3c が主力。analyzer 改修は別タスク。</li>
+<li>未分類ログの <code>ts</code> パースは syslog format (<code>May  3 08:19:20</code>) のみ対応。年情報欠落のため <code>datetime.now().year</code> を採用 — 5/5 本番期間内では問題なし、年跨ぎ時は要見直し。</li>
+<li>build mode (rocky) のオペレータ自身の sudo COMMAND= に既知侵害 IP を grep した行が forensic として残る (false positive)。production mode の <code>manage</code> 運用では発生しない。</li>
 </ul>
 
 
@@ -1552,6 +1813,26 @@ Mock: 1 / Claude: 2 / 検証通過: 3
 <li>発生時刻: 23:30 JST 頃 = <strong>14:30 UTC 頃</strong></li>
 <li>症状: ログイン失敗ログが大量</li>
 </ul>
+</div>
+
+<div class="step">
+<div class="step-title">ベースライン確認 (受電内容との整合)</div>
+<div class="step-meta">T+0:01 · 技術調査係 · <span class="tag ai">AI Auto</span></div>
+<p><code>/incident</code> 投入前に <code>/preflight</code> でサービス状態を取る:</p>
+<pre data-lang="claude-code">/preflight</pre>
+<pre data-lang="output">─── /preflight §1 victor (Linux) ───
+[OK ] httpd active / dovecot active / sshd active / mariadb active
+listen: 22 23 25 80 110 143 3306 33060
+load average: 0.45, 0.38, 0.22
+
+─── /preflight §1 bravo (Linux/Rocky) ───
+[OK ] dovecot active / named active
+load average: 0.18, 0.21, 0.19
+
+─── /preflight summary ───
+🚨 0 件   ⚠️ 0 件
+推奨次手順: /incident 14:30-14:40 victor</pre>
+<p>受電内容「ログイン失敗が大量」と整合: <strong>サービス自体は active なので「サイト落ち」ではない</strong> = 攻撃中ではあるが封じ込め可能なフェーズ。</p>
 </div>
 
 <div class="step">
@@ -1925,6 +2206,8 @@ dig @10.1.130.1 www.com1.local     # CIC DNS</pre>
 <tr><td><code>SSH_BRAVO</code></td><td>bravo への ssh 接続文字列</td><td><code>manage@10.1.1.1</code></td></tr>
 <tr><td><code>SHIRAHAMA_DIR</code></td><td>プロジェクトルート</td><td><code>/Users/ryu/Desktop/shirahama</code></td></tr>
 <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Claude backend 用</td><td><code>.env</code> から自動 source</td></tr>
+<tr><td><code>INCIDENT_WINDOW_START</code></td><td>/incident §4 で <code>filter_known_good_logs</code> に渡す時間窓開始 (ISO 8601 UTC)。§2 で計算され §4 内で export される</td><td>(§2 で動的に設定)</td></tr>
+<tr><td><code>INCIDENT_WINDOW_END</code></td><td>同上、時間窓終了</td><td>(§2 で動的に設定)</td></tr>
 </tbody>
 </table>
 
@@ -1940,6 +2223,35 @@ dig @10.1.130.1 www.com1.local     # CIC DNS</pre>
 </table>
 
 <div class="callout"><strong>tip</strong>build モード (settings.json) と production モード (settings.production.json) を切り替えて使う。本番直前に production を <code>cp</code> で settings.json に上書きする。<a href="../memory/system_scope.md">system_scope.md</a> 参照。</div>
+
+
+<h3 id="s55"><span class="num">5.5</span>変更履歴<a href="#s55" class="anchor">#</a></h3>
+
+<table>
+<thead><tr><th>日付</th><th>内容</th><th>影響範囲</th></tr></thead>
+<tbody>
+<tr>
+  <td>2026-05-03</td>
+  <td><strong>/preflight skill 新規追加</strong> — 受電前 / <code>/incident</code> 投入前のベースライン取得 (services / listen / load / 直近変更 / last)。両機並行、OS 自動判定 (Linux/FreeBSD)、<code>--baseline</code> / <code>--diff</code> / <code>--brief</code> オプション付き</td>
+  <td><a href="#cmd-preflight">§3.0</a> / <code>.claude/commands/preflight.md</code> 新規 / <a href="#ex-a">§4.A</a> Step 1.5 追加 / <a href="#s60">§6.0.3</a> リハーサル項目追加 / <code>settings.json</code> に <code>Bash(sockstat *)</code> 追加</td>
+</tr>
+<tr>
+  <td>2026-05-03</td>
+  <td><strong>未分類ログ Claude 投げ問題のフィルタ強化</strong> — 1896 件 → 63 件 (97% 削減)。<code>NOISE_PATTERNS</code> 追加 (pam_unix session 等 8 個) + 時間窓 + attacker_ips cross-ref + 10.1.129.0/24 forensic 保持の 3 段ふるい</td>
+  <td><a href="#cmd-incident">§3.1.5b</a> / <code>agent/backends/mock_backend.py</code> <code>filter_known_good_logs(logs, time_window, attacker_ips)</code> 拡張 / <code>.claude/commands/incident.md</code> §4 シェル変数 export</td>
+</tr>
+<tr>
+  <td>2026-05-03</td>
+  <td><strong>未分類ログのタイムスタンプ正規化</strong> — analyzer の <code>run_with_unmatched()</code> が unmatched dict に <code>ts</code> (ISO 8601 UTC) を付与。Claude が時系列推論時に raw 文字列を再パースする必要なし</td>
+  <td><a href="#cmd-incident">§3.1.5c</a> / <code>agent/analyzer.py</code> <code>_parse_syslog_ts()</code> ヘルパ追加 / <code>analyze_named</code> / <code>analyze_secure</code> / <code>analyze_maillog</code> の 3 箇所更新</td>
+</tr>
+<tr>
+  <td>2026-05-03</td>
+  <td><strong>OCI デモ脆弱化シミュレーション完了</strong> — bravo + victor に 5 シナリオ全植え込み (wp-tamper ✅ / dns-tamper / ddos amp / phishing / ransomware)。Sendmail 外部 listen 化、obuchi NOPASSWD sudoers + atd + 偽 4/24 secure ログ + authorized_keys hijack</td>
+  <td><code>memory/lab_vulnerabilities_to_plant.md</code> + <code>memory/demo_progress.md</code> / 物理ホスト (bravo/victor) 設定変更</td>
+</tr>
+</tbody>
+</table>
 
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -1994,6 +2306,7 @@ dig @10.1.130.1 www.com1.local     # CIC DNS</pre>
 <li><a href="#" onclick="activateTab('intake'); return false;">受電シート</a> → <a href="#" onclick="activateTab('handoff'); return false;">引き継ぎ</a> → <a href="#" onclick="activateTab('review'); return false;">判定</a> の 3 タブをダミーデータで通す。事案ID 切替で localStorage が分離することを確認</li>
 <li><code>nsupdate</code> を Claude に提案させて <code>settings.json</code> deny でブロックされることを確認</li>
 <li>Phase 0–6 のチェックボックスを全部触り、進捗バーが 100% で緑になることを確認</li>
+<li>OCI デモ環境で <code>/preflight</code> 空打ちしてベースラインを取る (services / listen / load の出力構造を頭に入れる)。<code>/preflight --baseline</code> で <code>/tmp/preflight_baseline.json</code> 保存 → <code>/preflight --diff</code> で差分 0 を確認</li>
 </ol>
 
 <h3 id="s61"><span class="num">6.1</span>起動前チェック (本番朝 30 分)<a href="#s61" class="anchor">#</a></h3>

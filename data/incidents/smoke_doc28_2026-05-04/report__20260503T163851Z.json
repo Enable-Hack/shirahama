@@ -1,0 +1,36 @@
+{
+  "skill": "report",
+  "incident_id": "smoke_doc28_2026-05-04",
+  "timestamp": "2026-05-03T16:38:51Z",
+  "actor": "ai_human",
+  "inputs": {
+    "triage_report_path": "~/Desktop/shirahama_test.md",
+    "template_path": "docs/04_完了報告テンプレート.md"
+  },
+  "outputs": {
+    "completion_mode": "first_response_only",
+    "checklist": {
+      "事象概要": true,
+      "影響範囲": true,
+      "原因": true,
+      "対応内容": true,
+      "再発防止": false,
+      "完了確認": false,
+      "リーダー承認": true
+    },
+    "templates": {
+      "customer": "customer 文面...",
+      "executive": "exec 文面..."
+    },
+    "remaining_items": [
+      "再発防止策の確定"
+    ]
+  },
+  "verdict": {
+    "status": "⚠️",
+    "summary": "一次対応完了、再発防止待ち"
+  },
+  "next_skills": [
+    "/ticket"
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "skill": "playbook-ransomware",
+  "incident_id": "smoke_doc28_2026-05-04",
+  "timestamp": "2026-05-03T16:38:39Z",
+  "actor": "ai_human",
+  "inputs": {
+    "scenario": "ransomware",
+    "incident_id": "smoke_doc28_2026-05-04"
+  },
+  "outputs": {
+    "proposed_commands": [
+      "ssh manage@10.1.1.2 \"sudo iptables -I INPUT -s 10.1.129.10 -j DROP\""
+    ],
+    "cmd_validator_result": {
+      "exit_code": 0,
+      "errors": [],
+      "warnings": []
+    },
+    "scope": {
+      "in_scope": [
+        "10.1.129.10 IP 遮断"
+      ],
+      "out_of_scope_logged": [
+        "bravo toor:0 UID0"
+      ]
+    }
+  },
+  "verdict": {
+    "status": "✅",
+    "summary": "提案 1 件 (validator PASS), 採用は人間判断"
+  },
+  "next_skills": [
+    "/report",
+    "/ticket"
+  ]
+}

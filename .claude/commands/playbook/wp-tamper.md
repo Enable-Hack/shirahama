@@ -105,3 +105,108 @@ python scripts/preprocess/parse_clf.py /tmp/incident_access.log \
 
 `04_完了報告テンプレート.md` の構造で出力:
 - 事象概要 / 検知経緯 / 影響範囲 / 原因 / 対応内容 / 再発防止
+
+## 6. 復旧/封じ込めコマンド (人間が手で実行)
+
+⚠️ 以下は **すべて人間がリーダー承認後に手で実行する**コマンドです。
+AI は表示・検証・突合のみ。実行には関与しません。
+理由:
+- タイポ / 不完全な diff / 旧設定上書きで復旧失敗 → サービスダウン継続のリスク
+- settings.production.json で物理的に deny されているため AI 実行は不可
+- チームが「自分たちで何を直しているか」を理解する必要がある（競技後の説明責任）
+
+```text
+# 攻撃元 IP の即時遮断 (HTTP / WP-login brute 緊急対応)
+iptables -I INPUT -s <ATTACKER_IP> -j DROP
+
+# WordPress xmlrpc.php / wp-cron.php の一時退避 (brute / amplification 遮断)
+mv /var/www/wordpress/xmlrpc.php /var/www/wordpress/xmlrpc.php.disabled
+mv /var/www/wordpress/wp-cron.php /var/www/wordpress/wp-cron.php.disabled
+
+# wp-config.php の権限戻し (640 / owner=apache:apache)
+chown apache:apache /var/www/wordpress/wp-config.php
+chmod 640 /var/www/wordpress/wp-config.php
+
+# uploads 配下の不審 PHP/PHTML/PHAR を退避 (webshell 即時隔離)
+find /var/www/wordpress/wp-content/uploads -type f \( -name "*.php" -o -name "*.phtml" -o -name "*.phar" \) -exec mv {} /tmp/evidence_webshell/ \;
+
+# .htaccess に PHP 実行禁止を追加 (uploads 配下からの RCE 遮断)
+cat >> /var/www/wordpress/wp-content/uploads/.htaccess <<'HTACCESS'
+<FilesMatch "\.(php|phtml|phar|pl)$">
+    Require all denied
+</FilesMatch>
+HTACCESS
+
+# obuchi/.ssh/authorized_keys 退避 (横展開ルート遮断 / 18_ #8)
+mv /home/obuchi/.ssh/authorized_keys /tmp/evidence_obuchi_authkeys.bak
+chmod 700 /home/obuchi
+
+# Apache 再読込 (上記 .htaccess / 退避を反映)
+apachectl -t   # 構文チェック先
+apachectl graceful
+```
+
+→ 表示後、§7 cmd_validator gate を必ず通すこと。
+→ サービス影響あるので、リーダー承認 + 顧客通知後に人間が手で実施。
+
+## 7. コマンド検証ゲート（封じ込めコマンド提示時 必須）
+
+**この playbook が封じ込め / 復旧コマンドを 1 行でも提示する場合**、リーダーに見せる前に必ず `agent/cmd_validator.py` を通すこと。settings.production.json で封じ込め系 + 復旧系 (cp /etc/, mv /etc/, sysctl -w 等) は deny になっており **AI は実行できない** — 提案文字列の事故防止が validator の役割。
+
+```bash
+# 提示候補を一時ファイルに書き出す（コメント行に「※リーダー承認後」を含めること）
+cat > /tmp/playbook_proposed.sh <<'EOF'
+# ※リーダー承認後 + 顧客通知後に人間が手で実行すること
+# (以下、AI が生成した封じ込め / 復旧コマンドを並べる)
+ssh manage@10.1.1.2 'sudo iptables -I INPUT -s <ATTACKER_IP> -j DROP'
+EOF
+
+# 検証
+PYTHONPATH=. ${SHIRAHAMA_PY:-python3} -m agent.cmd_validator /tmp/playbook_proposed.sh
+echo "exit=$?"
+```
+
+判定:
+- `exit=0` ✅ — リーダーに提示してよい。承認後に**人間が手で打つ**
+- `exit=1` 🚨 — ERROR あり。リーダーに見せず AI が再生成（自爆 IP / 触禁ホスト / sudo 不可ホスト等）
+- WARN のみ — 提示してよいが補足説明を添える
+
+## 8. JSON 永続化（HTML dashboard 連携）
+
+§6 の対策コマンド + §7 の cmd_validator 結果を JSON 化して helper に渡す。actor は `ai_human` (AI 提案 → 人間実行) を明示。
+
+```bash
+cat <<'JSON_EOF' | scripts/emit_skill_json.sh playbook-wp-tamper --actor ai_human
+{
+  "inputs": {
+    "scenario": "wp-tamper",
+    "incident_id": "$INCIDENT_ID"
+  },
+  "outputs": {
+    "proposed_commands": [
+      "<§6 で提案したコマンド全文 (1 行 1 件)>"
+    ],
+    "cmd_validator_result": {
+      "exit_code": 0,
+      "errors": [],
+      "warnings": ["<§7 cmd_validator が出した WARN/ERROR>"]
+    },
+    "scope": {
+      "in_scope": ["<受電内容と直結する対策>"],
+      "out_of_scope_logged": ["<観察したが今回触らないもの (治しすぎない哲学)>"]
+    }
+  },
+  "verdict": {
+    "status": "🚨 | ⚠️ | ✅",
+    "summary": "<提案 N 件 (validator PASS), 採用は人間判断>"
+  },
+  "next_skills": ["/report", "/ticket"]
+}
+JSON_EOF
+```
+
+- `actor=ai_human` で「AI が提案、人間が実行」を JSON 上で明示 (dashboard が UI 上で「未実行/実行済」バッジを出せる)
+- `proposed_commands[]` は §6 で提案した対策コマンドを 1 行 1 件で羅列。`text` フェンス内のコマンドをそのまま転記
+- `cmd_validator_result` は §7 で実行した `agent.cmd_validator` の exit_code + errors + warnings をそのまま入れる
+- `scope.out_of_scope_logged` で「観察したが今回触らない」項目を残し、報告書/ticket での記録に使う (治しすぎない哲学)
+- 保存先: `data/incidents/${INCIDENT_ID}/playbook-wp-tamper__<ts>.json`

@@ -4,11 +4,11 @@ ai-agent: LLMBackend 抽象インタフェース
 観測層（analyzer.py）が出力した Signal を受け取り、
 中立な PatchProposal として判断結果を返す契約を定義する。
 
-このモジュールは WAF 実装に依存しない。Nginx 向けの具体的構文への
-変換は renderers/nginx_renderer.py が担当する。
+このモジュールは WAF 実装に依存しない（白浜運用では Nginx 構文への
+翻訳は行わず、PatchProposal はそのまま画面表示・報告書生成に使われる）。
 
 教材上の位置づけ:
-    観測層 → 判断層（このモジュール）→ 検証層 → 提案層
+    観測層 → 判断層（このモジュール）→ 検証層 → 画面表示 / 報告書
     「判断」だけを差し替え可能にすることで、クラウドLLM・ローカルLLM・
     非LLMフォールバックの3者を同一コードから利用できる。
 """
@@ -58,9 +58,9 @@ class PatchProposal:
     """
     判断層（backend）が出力する、WAF非依存な中立パッチ提案。
 
-    このオブジェクトを renderer 層（nginx_renderer 等）が受け取って
-    具体的な WAF ルール構文に変換する。LLM が直接 nginx 記法を書く
-    設計は ReDoS や構文エラーの温床なので、必ず中立表現を経由する。
+    白浜運用では、このオブジェクトは検証層を通った後、画面に表示されて
+    人間（指揮係）と AI が議論する材料になる。実機への適用コマンドは
+    /playbook:* スキルが直接 ssh で発行する設計。
 
     フィールドの読み方:
         target          どの領域を保護するか（WHERE）
@@ -100,7 +100,7 @@ class LLMBackend(ABC):
     """
 
     @abstractmethod
-    def propose_patches(self, signals: list[Signal]) -> list[PatchProposal]:
+    def propose_patches(self, signals: list[Signal], unmatched_logs: list[dict] | None = None) -> list[PatchProposal]:
         """
         シグナル列を解釈し、複数の仮想パッチ提案を返す。
 
@@ -114,6 +114,7 @@ class LLMBackend(ABC):
         self,
         signals: list[Signal],
         patches: list[PatchProposal],
+        unmatched_logs: list[dict] | None = None,
     ) -> str:
         """SOC担当者向けの日本語状況説明を生成する。"""
         ...

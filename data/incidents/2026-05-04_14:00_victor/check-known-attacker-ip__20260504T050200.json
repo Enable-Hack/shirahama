@@ -1,0 +1,21 @@
+{
+  "skill": "check-known-attacker-ip",
+  "incident_id": "2026-05-04_14:00_victor",
+  "timestamp": "2026-05-04T05:02:00Z",
+  "actor": "ai_auto",
+  "inputs": {
+    "host": "victor",
+    "checked_ips": ["10.1.129.10", "203.0.113.45"]
+  },
+  "outputs": {
+    "matched": [
+      {"ip": "10.1.129.10", "first_seen": "2026-04-24T18:30:00Z", "users": ["obuchi", "manage"], "note": "§0.5 既侵害 IP"},
+      {"ip": "203.0.113.45", "first_seen": "2026-05-04T04:30:00Z", "users": ["obuchi"], "note": "新規。Dovecot brute 元と一致"}
+    ]
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "既侵害 IP (10.1.129.10) は今回未発火だが、新規 IP 203.0.113.45 が同じ obuchi を標的"
+  },
+  "next_skills": ["/playbook:phishing"]
+}

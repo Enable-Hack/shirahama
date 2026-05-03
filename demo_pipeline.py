@@ -5,7 +5,7 @@
 Signal → PatchProposal → Validate → nginx snippet まで全部追う
 """
 import json, textwrap
-from agent.analyzer import analyze_nginx, analyze_secure, analyze_maillog
+from agent.analyzer import analyze_nginx, analyze_secure, analyze_maillog, run_with_unmatched
 from agent.backends.mock_backend import MockBackend
 from agent.validator import validate_patches, PatchValidationError
 from agent.renderers.nginx_renderer import render_patches
@@ -52,9 +52,13 @@ nginx_logs = [
     {"path": "/vuln.php?x=system%28%27cat+/etc/passwd%27%29",
      "method": "GET", "ip": ATTACKER, "status": 200, "ts": "2026-05-03T14:36:00Z"},
 
-    # --- 通常ユーザ (攻撃ではない) ---
-    {"path": "/wp-login.php", "method": "GET", "ip": "10.1.11.55",
-     "status": 200, "ts": "2026-05-03T14:30:00Z"},  # 自チームIP → whitelist
+    # --- analyzerをすり抜ける未知の攻撃 (SSRF) ---
+    {"path": "/api/fetch?url=http://169.254.169.254/latest/meta-data/", 
+     "method": "GET", "ip": "203.0.113.88", "status": 200, "ts": "2026-05-03T14:37:00Z"},
+
+    # --- 通常ユーザ (攻撃ではない・パターンにも全くマッチしない) ---
+    {"path": "/index.php", "method": "GET", "ip": "10.1.11.55",
+     "status": 200, "ts": "2026-05-03T14:30:00Z"},  # 自チームIP → whitelistでフィルタされるはず
 ]
 
 secure_logs = [
@@ -70,13 +74,15 @@ secure_logs = [
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 section("層 1: 観測層 (analyzer.py)  logs → list[Signal]")
 
-web_signals  = analyze_nginx(nginx_logs)
-sec_signals  = analyze_secure(secure_logs)
+web_signals, web_unmatched = analyze_nginx(nginx_logs, return_unmatched=True)
+sec_signals, sec_unmatched = analyze_secure(secure_logs, return_unmatched=True)
 all_signals  = web_signals + sec_signals
+all_unmatched = web_unmatched + sec_unmatched
 
-print(f"  nginx ログ {len(nginx_logs)} 行 → {len(web_signals)} Signal")
-print(f"  secure ログ {len(secure_logs)} 行 → {len(sec_signals)} Signal")
-print(f"  合計 Signal: {len(all_signals)} 件\n")
+print(f"  nginx ログ {len(nginx_logs)} 行 → {len(web_signals)} Signal, {len(web_unmatched)} Unmatched")
+print(f"  secure ログ {len(secure_logs)} 行 → {len(sec_signals)} Signal, {len(sec_unmatched)} Unmatched")
+print(f"  合計 Signal: {len(all_signals)} 件")
+print(f"  合計 Unmatched: {len(all_unmatched)} 件\n")
 
 for i, s in enumerate(all_signals, 1):
     tag = s.evidence.get("pattern_tag", s.type)
@@ -102,14 +108,53 @@ for i, p in enumerate(patches, 1):
 subsection("MockBackend whitelist 動作確認")
 print(f"  自チームIP (10.1.11.55) からのアクセスは whitelist で除外: filtered_count={backend.filtered_count}")
 
+subsection("未分類ログのフィルタリング結果")
+filtered_unmatched = backend.filter_known_good_logs(all_unmatched)
+print(f"  未分類ログ {len(all_unmatched)} 件 → {len(filtered_unmatched)} 件にフィルタリング (Claudeへ送信予定)\n")
+for i, u in enumerate(filtered_unmatched, 1):
+    if 'path' in u:
+        print(f"  [{i:02d}] HTTP {u.get('method')} {u.get('path')} (IP: {u.get('ip')})")
+    else:
+        print(f"  [{i:02d}] {u.get('raw')}")
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 層 2.5: Claude 判断層 (ClaudeBackend)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("層 2.5: Claude 判断層 (ClaudeBackend)")
+import os
+from agent.backends.claude_backend import ClaudeBackend
+
+# .env を読んで環境変数にセット
+if os.path.exists(".env"):
+    with open(".env") as f:
+        for line in f:
+            if line.startswith("ANTHROPIC_API_KEY="):
+                os.environ["ANTHROPIC_API_KEY"] = line.strip().split("=", 1)[1]
+
+claude_patches = []
+if os.environ.get("ANTHROPIC_API_KEY") and filtered_unmatched:
+    print("  APIキーを検出。未分類ログをClaudeに送信して意味推論を実行します...")
+    claude_backend = ClaudeBackend()
+    claude_patches = claude_backend.propose_patches([], filtered_unmatched)
+    
+    print(f"  Claude 推論完了。PatchProposal {len(claude_patches)} 件生成\n")
+    for i, p in enumerate(claude_patches, 1):
+        print(f"  [{i:02d}] action={p.action:<12} confidence={p.confidence:.2f}  rule_id={p.rule_id}")
+        print(f"       target={p.target}  {p.match_type}:{p.match_operator}:{p.match_value!r:.60}")
+        print(f"       {p.rationale_ja[:80]}")
+else:
+    print("  APIキーがないか、対象ログがないためスキップ")
+
+all_patches = patches + claude_patches
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 層 3: 検証層 (validator)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 section("層 3: 検証層 (validator.py)  PatchProposal 健全性チェック")
 
 try:
-    validate_patches(patches)
-    print(f"  ✅ 全 {len(patches)} 件 検証通過")
+    validate_patches(all_patches)
+    print(f"  ✅ 全 {len(all_patches)} 件 検証通過")
 except PatchValidationError as e:
     print(f"  ❌ 検証失敗: {e}")
 
@@ -141,7 +186,7 @@ for bp in bad_patches:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 section("層 4: 提案層 (nginx_renderer.py)  PatchProposal → nginx snippet")
 
-render_results = render_patches(patches)
+render_results = render_patches(all_patches)
 
 rendered   = [r for r in render_results if r.status == "rendered"]
 skipped    = [r for r in render_results if r.status == "skipped"]

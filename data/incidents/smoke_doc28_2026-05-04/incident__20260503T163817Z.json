@@ -1,0 +1,50 @@
+{
+  "skill": "incident",
+  "incident_id": "smoke_doc28_2026-05-04",
+  "timestamp": "2026-05-03T16:38:17Z",
+  "actor": "ai_human",
+  "inputs": {
+    "window": "14:00-14:30",
+    "host": "victor",
+    "logs_collected": [
+      "access_log",
+      "secure",
+      "named.log",
+      "maillog"
+    ]
+  },
+  "outputs": {
+    "analyzer_signals": [
+      {
+        "pattern_tag": "auth/ssh-failed",
+        "evidence": {
+          "ip": "10.1.129.10",
+          "user": "obuchi"
+        },
+        "count": 3,
+        "severity": "🚨"
+      }
+    ],
+    "mock_patches": [],
+    "claude_patches": [],
+    "routing": {
+      "category": "ransomware",
+      "playbook": "/playbook:ransomware"
+    },
+    "soc_summary": "obuchi 既侵害 IP からの ssh-failed 3 件 + preflight で /etc/named.conf 改ざん疑い",
+    "customer_questions": [
+      "obuchi 氏は本日出社/作業中?",
+      "14:00 JST 頃に DNS 設定変更予定?"
+    ],
+    "preflight_anomalies_count": 2
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "既侵害 IP 由来 ssh + DNS 改ざん疑い → /check:check-known-attacker-ip + /check:check-bind-allow-update"
+  },
+  "next_skills": [
+    "/check:check-known-attacker-ip",
+    "/check:check-bind-allow-update",
+    "/playbook:ransomware"
+  ]
+}

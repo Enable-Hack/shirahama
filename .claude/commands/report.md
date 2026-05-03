@@ -171,9 +171,60 @@ echo "  template      : $SHIRAHAMA_DIR/docs/04_完了報告テンプレート.md
 
 ---
 
+## §8. JSON 出力 (HTML aggregator 連携 / 共通 helper 経由)
+
+5 種テンプレ + 完了判定チェックリストを JSON 化して helper に渡す。actor は `ai_human` (AI 生成 → 人間最終確認 + 顧客送信)。
+
+```bash
+cat <<'JSON_EOF' | scripts/emit_skill_json.sh report --actor ai_human
+{
+  "inputs": {
+    "triage_report_path": "~/Desktop/shirahama_test.md",
+    "template_path": "docs/04_完了報告テンプレート.md"
+  },
+  "outputs": {
+    "completion_mode": "complete | first_response_only",
+    "checklist": {
+      "事象概要": true, "影響範囲": true, "原因": true,
+      "対応内容": true, "再発防止": false, "完了確認": false,
+      "リーダー承認": true
+    },
+    "templates": {
+      "customer": "顧客担当者向け文面 ...",
+      "executive": "経営層向け 300 字 ...",
+      "users": "ユーザ向け注意喚起 ...",
+      "external": "外部通報元向け ...",
+      "email_subject_body": "件名 + 本文"
+    },
+    "remaining_items": ["再発防止策の確定", "完了確認の実施"]
+  },
+  "verdict": {
+    "status": "✅ | ⚠️ | info",
+    "summary": "完全完了 / 一次対応完了 / ドラフトのみ"
+  },
+  "next_skills": ["/ticket"]
+}
+JSON_EOF
+```
+
+helper が補完するメタデータ:
+- `skill`: `"report"`
+- `incident_id`: `INCIDENT_ID` env (= /incident からの伝播)
+- `timestamp`: 実行時 ISO 8601 UTC
+- `actor`: `ai_human` (AI 生成 → 人間が文面確認・送信)
+
+保存先: `data/incidents/${INCIDENT_ID}/report__<ts>.json`
+
+`completion_mode` の決め方 (§3 完了判定チェックリスト連動):
+- 7 項目すべて true → `complete` (5 種テンプレすべて出す)
+- 一部 false → `first_response_only` (顧客向け 1 種 + 残作業リスト)
+
+---
+
 ## 参照
 
 - `docs/04_完了報告テンプレート.md` — 充填対象
 - `docs/03_シナリオ別対応プレイブック.md` — 「対応 (実施)」フェーズ。本スキルは扱わない
 - `docs/05_全体チェックシート.md` — Phase 0-6 通し管理。本スキルは Phase 5-6 をカバー
 - `.claude/commands/incident.md` — 上流のトリアージ。本スキルの入力を生成する
+- `docs/incident_dashboard.html` — JSON を集約表示する HTML aggregator

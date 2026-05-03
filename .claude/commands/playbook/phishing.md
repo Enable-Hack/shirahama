@@ -113,17 +113,86 @@ python scripts/preprocess/parse_maillog.py /tmp/incident_maillog.log > /tmp/inci
 `04_完了報告テンプレート.md` の構造で出力。
 特に **全社向け注意喚起メールの文面**を別途生成（ユーザーへの被害防止）。
 
-## 6. 即時対応コマンド雛形
+## 6. 復旧/封じ込めコマンド (人間が手で実行)
 
-```bash
+⚠️ 以下は **すべて人間がリーダー承認後に手で実行する**コマンドです。
+AI は表示・検証・突合のみ。実行には関与しません。
+理由:
+- タイポ / 不完全な diff / 旧設定上書きで復旧失敗 → サービスダウン継続のリスク
+- settings.production.json で物理的に deny されているため AI 実行は不可
+- チームが「自分たちで何を直しているか」を理解する必要がある（競技後の説明責任）
+
+```text
 # postfix で特定送信元 IP をブロック
 echo "1.2.3.4 REJECT" >> /etc/postfix/access
 postmap /etc/postfix/access
 postfix reload
 
-# 不審メールのキュー削除
+# 不審メールのキュー削除（証拠保全のため postcat で先に保存してから削除）
+postcat -q <queue_id> | tee /tmp/evidence_<queue_id>.eml
 postsuper -d <queue_id>
 
 # 全社向け注意喚起メール（Claude 生成文を流し込む）
 # echo "<件名>" | mail -s "【重要】フィッシング注意" all_users@com1.local
 ```
+
+→ 表示後、§7 cmd_validator gate を必ず通すこと。
+
+## 7. コマンド検証ゲート（封じ込めコマンド提示時 必須）
+
+§6 の `postmap` / `postfix reload` / `postsuper -d` 等を 1 行でも提示する場合、**リーダーに見せる前に必ず `agent/cmd_validator.py` を通すこと**。settings.production.json で postfix reload / postsuper -d / postmap / Edit(/etc/**) は deny になっており **AI は実行できない** — 提案文字列の事故防止が validator の役割。
+
+```bash
+cat > /tmp/playbook_proposed.sh <<'EOF'
+# ※リーダー承認後 + 顧客通知後に人間が手で実行すること
+ssh manage@10.1.1.2 'sudo postsuper -d <queue_id>'
+EOF
+
+PYTHONPATH=. ${SHIRAHAMA_PY:-python3} -m agent.cmd_validator /tmp/playbook_proposed.sh
+echo "exit=$?"
+```
+
+判定:
+- `exit=0` ✅ — リーダーに提示してよい。承認後に**人間が手で打つ**
+- `exit=1` 🚨 — ERROR あり。bravo に `manage` で sudo 等を弾く
+- WARN のみ — 提示してよいが補足説明を添える
+
+## 8. JSON 永続化（HTML dashboard 連携）
+
+§6 の対策コマンド + §7 の cmd_validator 結果を JSON 化して helper に渡す。actor は `ai_human` (AI 提案 → 人間実行) を明示。
+
+```bash
+cat <<'JSON_EOF' | scripts/emit_skill_json.sh playbook-phishing --actor ai_human
+{
+  "inputs": {
+    "scenario": "phishing",
+    "incident_id": "$INCIDENT_ID"
+  },
+  "outputs": {
+    "proposed_commands": [
+      "<§6 で提案したコマンド全文 (1 行 1 件)>"
+    ],
+    "cmd_validator_result": {
+      "exit_code": 0,
+      "errors": [],
+      "warnings": ["<§7 cmd_validator が出した WARN/ERROR>"]
+    },
+    "scope": {
+      "in_scope": ["<受電内容と直結する対策>"],
+      "out_of_scope_logged": ["<観察したが今回触らないもの (治しすぎない哲学)>"]
+    }
+  },
+  "verdict": {
+    "status": "🚨 | ⚠️ | ✅",
+    "summary": "<提案 N 件 (validator PASS), 採用は人間判断>"
+  },
+  "next_skills": ["/report", "/ticket"]
+}
+JSON_EOF
+```
+
+- `actor=ai_human` で「AI が提案、人間が実行」を JSON 上で明示 (dashboard が UI 上で「未実行/実行済」バッジを出せる)
+- `proposed_commands[]` は §6 で提案した対策コマンドを 1 行 1 件で羅列。`text` フェンス内のコマンドをそのまま転記
+- `cmd_validator_result` は §7 で実行した `agent.cmd_validator` の exit_code + errors + warnings をそのまま入れる
+- `scope.out_of_scope_logged` で「観察したが今回触らない」項目を残し、報告書/ticket での記録に使う (治しすぎない哲学)
+- 保存先: `data/incidents/${INCIDENT_ID}/playbook-phishing__<ts>.json`

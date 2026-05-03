@@ -1,0 +1,36 @@
+{
+  "skill": "check-known-attacker-ip",
+  "incident_id": "smoke_doc28_2026-05-04",
+  "timestamp": "2026-05-03T16:38:25Z",
+  "actor": "ai_auto",
+  "inputs": {
+    "target_host": "victor",
+    "known_ips": [
+      "10.1.129.10"
+    ]
+  },
+  "outputs": {
+    "patterns_matched": [
+      {
+        "id": "A",
+        "label": "既侵害 IP からの再ログイン",
+        "verdict": "🚨"
+      },
+      {
+        "id": "B",
+        "label": "authorized_keys 改竄",
+        "verdict": "❌"
+      }
+    ],
+    "evidence": [
+      "May  4 14:01:23 victor sshd: Accepted publickey for obuchi from 10.1.129.10"
+    ]
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "既侵害 IP 再ログイン確定。/playbook:ransomware へ"
+  },
+  "next_skills": [
+    "/playbook:ransomware"
+  ]
+}

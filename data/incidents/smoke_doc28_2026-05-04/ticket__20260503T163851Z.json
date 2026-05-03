@@ -1,0 +1,27 @@
+{
+  "skill": "ticket",
+  "incident_id": "smoke_doc28_2026-05-04",
+  "timestamp": "2026-05-03T16:38:51Z",
+  "actor": "ai_human",
+  "inputs": {
+    "triage_report_path": "~/Desktop/shirahama_test.md"
+  },
+  "outputs": {
+    "fields": {
+      "occurrence_time": "2026-05-04 14:00 JST",
+      "trouble_content": "obuchi アカウントから不審 ssh",
+      "cause": "既侵害 IP からの再ログイン",
+      "actions_taken": [
+        "10.1.129.10 IP 遮断"
+      ],
+      "recovery_verification": "再ログイン無し確認"
+    },
+    "pukiwiki_markup": "*事象概要\n2026-05-04 14:00 JST...",
+    "submission_url": "http://133.42.49.140/trouble_ticket_137/index.php"
+  },
+  "verdict": {
+    "status": "info",
+    "summary": "PukiWiki マークアップ生成完了"
+  },
+  "next_skills": []
+}
