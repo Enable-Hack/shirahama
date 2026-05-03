@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>電話対応台本 — SCCS2026 Booth1/whiskey</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
+
+  :root {
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --surface2: #e8eef5;
+    --border: #c8d6e8;
+    --accent: #0077cc;
+    --accent2: #d94f00;
+    --accent3: #1a8a2e;
+    --warn: #b37700;
+    --danger: #cc1133;
+    --text: #1a2840;
+    --text-dim: #6080a0;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'Noto Sans JP', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  /* ヘッダー */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    background: var(--accent);
+    color: #000;
+    padding: 3px 8px;
+    border-radius: 2px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .header h1 {
+    font-family: var(--mono);
+    font-size: 18px;
+    color: var(--accent);
+    letter-spacing: 2px;
+  }
+  .header-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    margin-left: auto;
+  }
+
+  /* ステータスバー */
+  .statusbar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 16px;
+    display: flex;
+    gap: 24px;
+    margin-bottom: 20px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .status-item { display: flex; flex-direction: column; gap: 2px; }
+  .status-label { color: var(--text-dim); font-size: 9px; letter-spacing: 1px; }
+  .status-val { color: var(--accent); font-weight: 700; }
+
+  /* タブ */
+  .tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 16px;
+  }
+  .tab {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    border-radius: 2px 2px 0 0;
+    transition: all .15s;
+    letter-spacing: 1px;
+    user-select: none;
+  }
+  .tab.active {
+    background: var(--surface2);
+    border-bottom-color: var(--surface2);
+    color: var(--accent);
+    border-top: 2px solid var(--accent);
+  }
+  .tab:hover:not(.active) { color: var(--text); background: var(--surface2); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* セクション */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid transparent;
+    transition: background .15s;
+    user-select: none;
+  }
+  .section-header:hover { background: var(--surface2); }
+  .section.open .section-header { border-bottom-color: var(--border); }
+  .section-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: #000;
+    background: var(--accent);
+    width: 20px; height: 20px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 2px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    flex: 1;
+  }
+  .section-tag {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 2px;
+    letter-spacing: 1px;
+  }
+  .tag-required { background: #ffd0d8; color: var(--danger); border: 1px solid var(--danger); }
+  .tag-info { background: #d0e8fa; color: var(--accent); border: 1px solid var(--accent); }
+  .tag-warn { background: #fdf0cc; color: var(--warn); border: 1px solid var(--warn); }
+  .tag-ok { background: #d0f0d8; color: var(--accent3); border: 1px solid var(--accent3); }
+
+  .chevron {
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: transform .2s;
+    font-family: var(--mono);
+  }
+  .section.open .chevron { transform: rotate(90deg); }
+
+  .section-body { display: none; padding: 16px; }
+  .section.open .section-body { display: block; }
+
+  /* スクリプトライン */
+  .script-line {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+    align-items: flex-start;
+  }
+  .script-speaker {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 3px 7px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    letter-spacing: 1px;
+    font-weight: 700;
+    min-width: 52px;
+    text-align: center;
+  }
+  .speaker-you { background: #d0e8fa; color: var(--accent); border: 1px solid var(--accent); }
+  .speaker-cic { background: #ffe5d8; color: var(--accent2); border: 1px solid var(--accent2); }
+  .speaker-note { background: transparent; color: var(--warn); border: 1px dashed var(--warn); font-size: 8px; }
+
+  .script-text {
+    font-size: 13px;
+    line-height: 1.7;
+    flex: 1;
+  }
+  .script-text .fill {
+    display: inline-block;
+    background: #00d4ff15;
+    border-bottom: 1px solid var(--accent);
+    padding: 0 6px;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+    border-radius: 2px 2px 0 0;
+    cursor: pointer;
+  }
+  .script-text .fill:hover { background: #00d4ff30; }
+
+  /* チェックリスト */
+  .checklist { list-style: none; }
+  .checklist li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .1s;
+    border-radius: 2px;
+    padding-left: 4px;
+  }
+  .checklist li:hover { background: var(--surface2); }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li.done { color: var(--text-dim); }
+  .check-box {
+    width: 16px; height: 16px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 10px;
+    transition: all .15s;
+    font-family: var(--mono);
+  }
+  .checklist li.done .check-box {
+    background: var(--accent3);
+    border-color: var(--accent3);
+    color: #000;
+    font-weight: 700;
+  }
+  .check-label { flex: 1; }
+  .check-key {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text-dim);
+    background: var(--surface2);
+    padding: 2px 5px;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+  }
+
+  /* 情報入力グリッド */
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .info-field {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .info-field label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+  .info-field input, .info-field select {
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+    width: 100%;
+  }
+  .info-field input::placeholder { color: var(--text-dim); font-size: 11px; }
+
+  /* ルーティングカード */
+  .routing-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .route-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all .15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .route-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+  }
+  .route-card.web::before { background: var(--accent); }
+  .route-card.mail::before { background: var(--accent2); }
+  .route-card.dns::before { background: var(--accent3); }
+  .route-card.ddos::before { background: var(--danger); }
+  .route-card.ransom::before { background: var(--warn); }
+  .route-card.net::before { background: #aa88ff; }
+
+  .route-card:hover { border-color: var(--accent); background: #1a2332; }
+  .route-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .route-card.web .route-name { color: var(--accent); }
+  .route-card.mail .route-name { color: var(--accent2); }
+  .route-card.dns .route-name { color: var(--accent3); }
+  .route-card.ddos .route-name { color: var(--danger); }
+  .route-card.ransom .route-name { color: var(--warn); }
+  .route-card.net .route-name { color: #aa88ff; }
+
+  .route-symptoms { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+  .route-cmd {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: #000;
+    padding: 2px 6px;
+    border-radius: 2px;
+    margin-top: 6px;
+    display: inline-block;
+  }
+  .route-card.web .route-cmd { background: var(--accent); }
+  .route-card.mail .route-cmd { background: var(--accent2); }
+  .route-card.dns .route-cmd { background: var(--accent3); }
+  .route-card.ddos .route-cmd { background: var(--danger); }
+  .route-card.ransom .route-cmd { background: var(--warn); }
+  .route-card.net .route-cmd { background: #aa88ff; }
+
+  /* アラートバナー */
+  .alert {
+    border-radius: 4px;
+    padding: 10px 14px;
+    font-size: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    line-height: 1.6;
+  }
+  .alert-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  .alert.danger { background: #ff335518; border: 1px solid var(--danger); }
+  .alert.warn { background: #ffcc0012; border: 1px solid var(--warn); }
+  .alert.info { background: #00d4ff10; border: 1px solid var(--accent); }
+
+  /* コピーボタン */
+  .copy-btn {
+    font-family: var(--mono);
+    font-size: 9px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 3px 8px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all .15s;
+    float: right;
+    margin-top: -2px;
+  }
+  .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .copy-btn.copied { color: var(--accent3); border-color: var(--accent3); }
+
+  /* タイマー */
+  .timer-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+  .timer-display {
+    font-family: var(--mono);
+    font-size: 24px;
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: 4px;
+    min-width: 90px;
+  }
+  .timer-display.warn { color: var(--warn); }
+  .timer-display.danger { color: var(--danger); animation: blink .5s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .timer-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 6px 12px;
+    border-radius: 2px;
+    border: 1px solid;
+    cursor: pointer;
+    letter-spacing: 1px;
+    font-weight: 700;
+    transition: all .15s;
+  }
+  .btn-start { background: var(--accent3); border-color: var(--accent3); color: #000; }
+  .btn-stop { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .btn-reset { background: transparent; border-color: var(--text-dim); color: var(--text-dim); }
+  .btn-reset:hover { border-color: var(--text); color: var(--text); }
+  .timer-label { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+  .timer-progress {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .timer-fill {
+    height: 100%;
+    background: var(--accent3);
+    border-radius: 2px;
+    transition: width .5s linear, background .5s;
+    width: 0%;
+  }
+
+  /* メモエリア */
+  .memo-area {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    min-height: 120px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    outline: none;
+    width: 100%;
+    resize: vertical;
+    line-height: 1.7;
+    transition: border-color .15s;
+  }
+  .memo-area:focus { border-color: var(--accent); }
+  .memo-area::placeholder { color: var(--text-dim); }
+
+  /* 区切り線 */
+  .divider {
+    border: none;
+    border-top: 1px dashed var(--border);
+    margin: 12px 0;
+  }
+
+  /* 小見出し */
+  .sub-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sub-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* フローティングコマンドパネル */
+  .cmd-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent3);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .cmd-icon { color: var(--text-dim); }
+  .cmd-text { flex: 1; }
+
+  /* スクロール */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  .highlight-box {
+    background: #00d4ff08;
+    border: 1px solid #00d4ff33;
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 8px 0;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .highlight-box strong { color: var(--accent); }
+
+  .inline-tag {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 2px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-badge">SCCS2026</div>
+  <h1>☎ 電話対応台本</h1>
+  <div class="header-sub">Booth1 / whiskey &nbsp;|&nbsp; 電話受電担当用</div>
+</div>
+
+<div class="statusbar">
+  <div class="status-item">
+    <span class="status-label">TEAM</span>
+    <span class="status-val">whiskey</span>
+  </div>
+  <div class="status-item">
+    <span class="status-label">BOOTH</span>
+    <span class="status-val">Booth1</span>
+  </div>
+  <div class="status-item">
+    <span class="status-label">TARGET</span>
+    <span class="status-val">30 MIN/INC</span>
+  </div>
+  <div class="status-item">
+    <span class="status-label">BRAVO</span>
+    <span class="status-val">10.1.1.1</span>
+  </div>
+  <div class="status-item">
+    <span class="status-label">VICTOR</span>
+    <span class="status-val">10.1.1.2</span>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('script')">📞 受電台本</div>
+  <div class="tab" onclick="switchTab('intake')">📋 情報収集</div>
+  <div class="tab" onclick="switchTab('routing')">🔀 ルーティング</div>
+  <div class="tab" onclick="switchTab('timer')">⏱ タイマー＆メモ</div>
+</div>
+
+<!-- ===== TAB: 受電台本 ===== -->
+<div id="panel-script" class="panel active">
+
+  <div class="section open">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-num">0</div>
+      <div class="section-title">電話受電前チェック（演習開始前に確認）</div>
+      <span class="section-tag tag-required">BEFORE</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="section-body">
+      <ul class="checklist" id="pre-check">
+        <li onclick="toggleCheck(this)"><div class="check-box"></div><span class="check-label">VPN（L2TP）接続完了</span><span class="check-key">133.42.49.151</span></li>
+        <li onclick="toggleCheck(this)"><div class="check-box"></div><span class="check-label">BravoへのSSH確認済み</span><span class="check-key">10.1.1.1</span></li>
+        <li onclick="toggleCheck(this)"><div class="check-box"></div><span class="check-label">VictorへのSSH確認済み</span><span class="check-key">10.1.1.2</span></li>
+        <li onclick="toggleCheck(this)"><div class="check-box"></div><span class="check-label">CICへの返信メール送信済み</span><span class="check-key">必須</span></li>
+        <li onclick="toggleCheck(this)"><div class="check-box"></div><span class="check-label">Pukiwikiログイン確認済み</span><span class="check-key">trouble_ticket_137</span></li>
+        <li onclick="toggleCheck(this)"><div class="check-box"></div><span class="check-label">WordPressログイン確認済み</span><span class="check-key">wp-admin</span></li>
+        <li onclick="toggleCheck(this)"><div class="check-box"></div><span class="check-label">受電シート（空白）準備済み</span><span class="check-key">メモ帳</span></li>
+        <li onclick="toggleCheck(this)"><div class="check-box"></div><span class="check-label">技術調査担当者が隣にいることを確認</span><span class="check-key">連携</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section open">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-num">1</div>
+      <div class="section-title">受電〜挨拶・本人確認</div>
+      <span class="section-tag tag-required">必ず言う</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="section-body">
+      <div class="alert info">
+        <span class="alert-icon">ℹ</span>
+        <span>電話を受けたら即座にタイマーをスタート。技術担当にも声をかけて構える。</span>
+      </div>
+
+      <div class="sub-label">台本</div>
+      <div class="script-line">
+        <span class="script-speaker speaker-you">自分</span>
+        <span class="script-text">
+          <button class="copy-btn" onclick="copyText(this, 'お電話ありがとうございます。com1.localの担当、Booth1 whiskeyです。本日はどのようなご用件でしょうか？')">COPY</button>
+          「お電話ありがとうございます。<strong>com1.localの担当、Booth1 whiskeyです</strong>。本日はどのようなご用件でしょうか？」
+        </span>
+      </div>
+      <div class="script-line">
+        <span class="script-speaker speaker-cic">CIC</span>
+        <span class="script-text">（トラブル内容を話してくる）</span>
+      </div>
+      <div class="script-line">
+        <span class="script-speaker speaker-you">自分</span>
+        <span class="script-text">
+          <button class="copy-btn" onclick="copyText(this, 'ご連絡いただきありがとうございます。状況を確認させてください。まず、いつ頃から問題が発生しておりますか？')">COPY</button>
+          「ご連絡いただきありがとうございます。状況を確認させてください。まず、<strong>いつ頃から</strong>問題が発生しておりますか？」
+        </span>
+      </div>
+
+      <div class="alert warn">
+        <span class="alert-icon">⚠</span>
+        <span>「少々お待ちください」と言いたくなっても、<strong>その場で把握できる範囲で答える</strong>のが基本。長く待たせない。</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section open">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-num">2</div>
+      <div class="section-title">情報収集フェーズ（5W1H）</div>
+      <span class="section-tag tag-required">必ず聞く</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="section-body">
+      <div class="alert info">
+        <span class="alert-icon">ℹ</span>
+        <span>JPCERT/CCマニュアル準拠。<strong>When / Where / What / How</strong>を先に確認。「Why（原因）」は調査後に答える。</span>
+      </div>
+
+      <div class="sub-label">聞くべきこと（順番に）</div>
+
+      <div class="script-line">
+        <span class="script-speaker speaker-you">自分</span>
+        <span class="script-text">
+          <button class="copy-btn" onclick="copyText(this, '問題が最初に確認されたのは何時頃でしたか？')">COPY</button>
+          ⏰ <strong>【When】</strong>「問題が最初に確認されたのは<strong>何時頃</strong>でしたか？」
+        </span>
+      </div>
+      <div class="script-line">
+        <span class="script-speaker speaker-you">自分</span>
+        <span class="script-text">
+          <button class="copy-btn" onclick="copyText(this, 'どのサービスやページで問題が発生していますか？URLやサービス名を教えていただけますか？')">COPY</button>
+          📍 <strong>【Where】</strong>「どのサービスやページで問題が発生していますか？URLやサービス名を教えていただけますか？」
+        </span>
+      </div>
+      <div class="script-line">
+        <span class="script-speaker speaker-you">自分</span>
+        <span class="script-text">
+          <button class="copy-btn" onclick="copyText(this, '具体的にどのような問題が起きていますか？エラーメッセージや画面の状況を教えていただけますか？')">COPY</button>
+          ❓ <strong>【What】</strong>「具体的にどのような問題が起きていますか？エラーメッセージや画面の状況を教えていただけますか？」
+        </span>
+      </div>
+      <div class="script-line">
+        <span class="script-speaker speaker-you">自分</span>
+        <span class="script-text">
+          <button class="copy-btn" onclick="copyText(this, 'それは突然発生しましたか？それとも徐々に悪化しましたか？')">COPY</button>
+          🔍 <strong>【How】</strong>「それは突然発生しましたか？それとも徐々に悪化しましたか？」
+        </span>
+      </div>
+      <div class="script-line">
+        <span class="script-speaker speaker-you">自分</span>
+        <span class="script-text">
+          <button class="copy-btn" onclick="copyText(this, '影響を受けているユーザーはどのくらいいますか？特定のユーザーだけですか？')">COPY</button>
+          👥 <strong>【影響範囲】</strong>「影響を受けているユーザーはどのくらいいますか？特定のユーザーだけですか？」
+        </span>
+      </div>
+
+      <hr class="divider">
+      <div class="sub-label">カテゴリ判定のための追加質問</div>
+
+      <div class="script-line">
+        <span class="script-speaker speaker-note">注意</span>
+        <span class="script-text" style="font-size:11px; color: var(--text-dim);">
+          症状によって追加で聞く内容を変える。判断に迷ったら全部聞いてOK。
+        </span>
+      </div>
+
+      <div class="highlight-box">
+        <strong>Web・不正アクセス系</strong>の場合に追加で聞く：<br>
+        「WordPressの管理画面や、掲示板に<strong>身に覚えのない書き込みや変更</strong>はありますか？」<br>
+        「サイトの表示が通常と<strong>違う内容になっている</strong>箇所はありますか？」
+      </div>
+      <div class="highlight-box">
+        <strong>メール・フィッシング系</strong>の場合に追加で聞く：<br>
+        「不審なメールが届いていたり、<strong>送信した覚えのないメールが送られている</strong>ということはありますか？」<br>
+        「メールの認証エラーや<strong>スパムのバウンスメール</strong>が大量に届いていますか？」
+      </div>
+      <div class="highlight-box">
+        <strong>ネットワーク・DDoS系</strong>の場合に追加で聞く：<br>
+        「<strong>サイトが重い・繋がらない</strong>状態ですか？特定のページだけですか、全体ですか？」<br>
+        「同時に<strong>複数のサービス</strong>に問題が出ていますか？」
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-num">3</div>
+      <div class="section-title">技術調査担当へ引き継ぎ（電話中）</div>
+      <span class="section-tag tag-info">並行作業</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="section-body">
+      <div class="alert warn">
+        <span class="alert-icon">⚠</span>
+        <span>電話しながら技術調査担当に<strong>メモで情報を渡す</strong>。口頭で中断しなくてよい。</span>
+      </div>
+
+      <div class="sub-label">技術担当に渡すメモ内容</div>
+      <ul class="checklist">
+        <li><div class="check-box"></div><span class="check-label">発生時刻（例: 14:30〜）</span></li>
+        <li><div class="check-box"></div><span class="check-label">対象ホスト（victor / bravo）</span></li>
+        <li><div class="check-box"></div><span class="check-label">症状カテゴリ（Web/Mail/DNS/DDoS等）</span></li>
+      </ul>
+
+      <div class="cmd-panel">
+        <span class="cmd-icon">$</span>
+        <span class="cmd-text">技術担当が叩くコマンド例：<strong>/incident 14:30-15:00 victor</strong></span>
+      </div>
+
+      <div class="sub-label" style="margin-top:12px">顧客への繋ぎ言葉（調査中）</div>
+      <div class="script-line">
+        <span class="script-speaker speaker-you">自分</span>
+        <span class="script-text">
+          <button class="copy-btn" onclick="copyText(this, 'ただいま技術担当が状況を確認しております。現時点で確認できる範囲では、ご指摘の事象を認識しております。詳細が判明次第、あらためてご連絡いたします。')">COPY</button>
+          「ただいま技術担当が状況を確認しております。<strong>現時点で確認できる範囲では</strong>、ご指摘の事象を認識しております。詳細が判明次第、あらためてご連絡いたします。」
+        </span>
+      </div>
+      <div class="script-line">
+        <span class="script-speaker speaker-you">自分</span>
+        <span class="script-text">
+          「現在、担当部署と連携して対応を進めております。復旧の見込みがわかり次第、速やかにご報告いたします。」
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-num">4</div>
+      <div class="section-title">対応結果の報告・クロージング</div>
+      <span class="section-tag tag-ok">完了報告</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="section-body">
+      <div class="sub-label">技術担当からドラフトを受け取ったら読み上げ</div>
+
+      <div class="script-line">
+        <span class="script-speaker speaker-you">自分</span>
+        <span class="script-text">
+          <button class="copy-btn" onclick="copyText(this, 'お待たせいたしました。技術担当より状況をお伝えします。【ここにClaudeが生成した200字サマリを読み上げ】なお、現時点で確認できる範囲での状況となります。ご不明な点はございますか？')">COPY</button>
+          「お待たせいたしました。技術担当より状況をお伝えします。<br>
+          <span class="fill">【Claudeが生成した200字サマリを読み上げ】</span><br>
+          なお、<strong>現時点で確認できる範囲での状況</strong>となります。ご不明な点はございますか？」
+        </span>
+      </div>
+
+      <hr class="divider">
+      <div class="sub-label">クロージング</div>
+
+      <div class="script-line">
+        <span class="script-speaker speaker-you">自分</span>
+        <span class="script-text">
+          <button class="copy-btn" onclick="copyText(this, 'ご連絡いただきありがとうございました。引き続き状況を監視いたします。何かございましたら、またご連絡ください。失礼いたします。')">COPY</button>
+          「ご連絡いただきありがとうございました。引き続き状況を監視いたします。何かございましたら、またご連絡ください。失礼いたします。」
+        </span>
+      </div>
+
+      <div class="alert info" style="margin-top:12px">
+        <span class="alert-icon">ℹ</span>
+        <span>通話終了後すぐにチケット用のメモを整理する。発生時刻・症状・対応内容・復旧確認を5項目で記録。</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-num">!</div>
+      <div class="section-title">言ってはいけないこと・NGフレーズ</div>
+      <span class="section-tag tag-required">NG</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="section-body">
+      <div class="alert danger">
+        <span class="alert-icon">🚫</span>
+        <div>
+          <strong>絶対に言わない：</strong><br>
+          ❌「わかりません」→ ✅「確認いたします」<br>
+          ❌「できません」→ ✅「現時点では〜の状況です」<br>
+          ❌「攻撃されました」（確定前）→ ✅「不審なアクセスを確認しております」<br>
+          ❌「個人情報が漏れました」（未確認）→ ✅「現在調査中です」<br>
+          ❌「原因は〜です」（調査前）→ ✅「確認できている事象をお伝えします」
+        </div>
+      </div>
+      <div class="alert warn">
+        <span class="alert-icon">⚠</span>
+        <div>
+          技術担当の調査が完了する前に<strong>断言しない</strong>。「現時点で確認できる範囲では」を口癖にする。
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== TAB: 情報収集 ===== -->
+<div id="panel-intake" class="panel">
+
+  <div class="section open">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-num">📋</div>
+      <div class="section-title">受電シート（受電のたびに記入）</div>
+      <span class="section-tag tag-required">記入必須</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="section-body">
+      <div class="info-grid">
+        <div class="info-field">
+          <label>📅 受電時刻</label>
+          <input type="text" id="f-time" placeholder="例: 14:32" />
+        </div>
+        <div class="info-field">
+          <label>📞 連絡者（CICのロール等）</label>
+          <input type="text" id="f-caller" placeholder="例: 利用者 / CIC担当者" />
+        </div>
+        <div class="info-field">
+          <label>⏰ 問題発生時刻</label>
+          <input type="text" id="f-incident-time" placeholder="例: 14:30頃 / 不明" />
+        </div>
+        <div class="info-field">
+          <label>🖥 対象サービス / URL</label>
+          <input type="text" id="f-service" placeholder="例: WordPress / www.com1.local" />
+        </div>
+        <div class="info-field">
+          <label>❓ 症状カテゴリ（推定）</label>
+          <select id="f-category">
+            <option value="">-- 選択 --</option>
+            <option>Web不正アクセス / 改ざん</option>
+            <option>ブルートフォース / 認証突破</option>
+            <option>メール異常 / スパム</option>
+            <option>DNS異常</option>
+            <option>DDoS / ネットワーク過負荷</option>
+            <option>フィッシング</option>
+            <option>ランサムウェア / マルウェア</option>
+            <option>サービス停止（原因不明）</option>
+            <option>その他</option>
+          </select>
+        </div>
+        <div class="info-field">
+          <label>🏠 対象ホスト（推定）</label>
+          <select id="f-host">
+            <option value="">-- 選択 --</option>
+            <option>Victor (10.1.1.2)</option>
+            <option>Bravo (10.1.1.1)</option>
+            <option>両方</option>
+            <option>不明</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top: 10px;">
+        <div class="info-field" style="background: var(--surface2); border-color: var(--border);">
+          <label>📝 症状詳細（聞いた内容をそのまま）</label>
+          <textarea class="memo-area" id="f-detail" style="margin-top:4px; min-height:80px" placeholder="「サイトが見られない」「不審なメールが届いた」等、顧客の言葉をそのままメモ"></textarea>
+        </div>
+      </div>
+
+      <div style="margin-top: 10px; display:flex; gap:8px;">
+        <button onclick="generateIncidentCmd()" style="font-family:var(--mono); font-size:11px; background: var(--accent); color:#000; border:none; padding: 8px 16px; border-radius:2px; cursor:pointer; font-weight:700; letter-spacing:1px;">
+          🤖 /incident コマンド生成
+        </button>
+        <button onclick="clearForm()" style="font-family:var(--mono); font-size:11px; background: transparent; color:var(--text-dim); border:1px solid var(--border); padding: 8px 16px; border-radius:2px; cursor:pointer;">
+          CLR
+        </button>
+      </div>
+
+      <div class="cmd-panel" id="cmd-output" style="display:none; margin-top:8px;">
+        <span class="cmd-icon">$</span>
+        <span class="cmd-text" id="cmd-text-output" style="color: var(--accent);">—</span>
+        <button class="copy-btn" onclick="copyField('cmd-text-output', this)">COPY</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-num">🔑</div>
+      <div class="section-title">クイックリファレンス（パスワード一覧）</div>
+      <span class="section-tag tag-warn">機密</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="section-body">
+      <div class="grid2">
+        <div class="info-field">
+          <label>WordPress</label>
+          <input type="text" readonly value="admin / Cm0re" style="color:var(--accent3)" />
+        </div>
+        <div class="info-field">
+          <label>RainLoop メール</label>
+          <input type="text" readonly value="manage@com1.local / sh1Ra8mA" style="color:var(--accent3)" />
+        </div>
+        <div class="info-field">
+          <label>Pukiwiki チケット</label>
+          <input type="text" readonly value="whiskey / E5mA9cF3" style="color:var(--accent3)" />
+        </div>
+        <div class="info-field">
+          <label>機器 manage PW</label>
+          <input type="text" readonly value="sh1Ra8mA" style="color:var(--warn)" />
+        </div>
+        <div class="info-field">
+          <label>機器 root/admin PW</label>
+          <input type="text" readonly value="KCom10sT" style="color:var(--danger)" />
+        </div>
+        <div class="info-field">
+          <label>MySQL</label>
+          <input type="text" readonly value="mysql / yoursql" style="color:var(--text-dim)" />
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TAB: ルーティング ===== -->
+<div id="panel-routing" class="panel">
+
+  <div class="alert info" style="margin-bottom:12px">
+    <span class="alert-icon">ℹ</span>
+    <span>症状を聞いてカテゴリを判定 → 対応する <strong>spoke skill</strong> を技術担当に伝える。カードをクリックで詳細表示。</span>
+  </div>
+
+  <div class="routing-grid">
+    <div class="route-card web" onclick="showRouteDetail('web')">
+      <div class="route-name">🌐 Web不正アクセス / 改ざん</div>
+      <div class="route-symptoms">
+        • サイトの表示が変わった<br>
+        • 不審な書き込みがある<br>
+        • ログインできない<br>
+        • 管理画面に異常
+      </div>
+      <div class="route-cmd">/wp-tamper</div>
+    </div>
+    <div class="route-card mail" onclick="showRouteDetail('mail')">
+      <div class="route-name">📧 メール異常 / フィッシング</div>
+      <div class="route-symptoms">
+        • スパムが届く / 送られている<br>
+        • 不審なメールが来た<br>
+        • メールが届かない<br>
+        • SASL認証エラー多発
+      </div>
+      <div class="route-cmd">/phishing</div>
+    </div>
+    <div class="route-card dns" onclick="showRouteDetail('dns')">
+      <div class="route-name">🔍 DNS異常</div>
+      <div class="route-symptoms">
+        • サイトにアクセスできない<br>
+        • 名前解決が失敗する<br>
+        • 外部からDNS問い合わせが多い<br>
+        • ゾーン情報が変わっている
+      </div>
+      <div class="route-cmd">/dns-tamper</div>
+    </div>
+    <div class="route-card ddos" onclick="showRouteDetail('ddos')">
+      <div class="route-name">💥 DDoS / ネットワーク過負荷</div>
+      <div class="route-symptoms">
+        • サイト全体が重い・繋がらない<br>
+        • 突然のアクセス激増<br>
+        • ネットワークが不安定<br>
+        • 複数サービス同時に影響
+      </div>
+      <div class="route-cmd">/ddos</div>
+    </div>
+    <div class="route-card ransom" onclick="showRouteDetail('ransom')">
+      <div class="route-name">🔒 ランサムウェア / マルウェア</div>
+      <div class="route-symptoms">
+        • ファイルが暗号化された<br>
+        • 身代金要求画面が出た<br>
+        • 不審なプロセスが動いている<br>
+        • 権限昇格の痕跡
+      </div>
+      <div class="route-cmd">/ransomware</div>
+    </div>
+    <div class="route-card net" onclick="showRouteDetail('net')">
+      <div class="route-name">🔌 ネットワーク / 機器障害</div>
+      <div class="route-symptoms">
+        • ネット接続が切れた<br>
+        • 特定セグメントが孤立<br>
+        • ルータ・スイッチの異常<br>
+        • DHCP配布がおかしい
+      </div>
+      <div class="route-cmd">手動調査</div>
+    </div>
+  </div>
+
+  <div id="route-detail" style="display:none; margin-top:12px;"></div>
+
+  <div class="section" style="margin-top:12px">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-num">📊</div>
+      <div class="section-title">トリアージ判断フロー（JPCERT準拠）</div>
+      <span class="section-tag tag-info">参考</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="section-body">
+      <div style="font-family: var(--mono); font-size: 12px; line-height: 2; color: var(--text);">
+        <span style="color:var(--accent)">受電</span><br>
+        ↓<br>
+        <span style="color:var(--warn)">① 事実確認</span>：これは本当にインシデントか？誤検知・勘違いではないか？<br>
+        ↓<br>
+        <span style="color:var(--warn)">② 自組織関係確認</span>：com1.local / Booth1担当の問題か？<br>
+        ↓<br>
+        <span style="color:var(--accent)">③ カテゴリ判定</span>：6分類のどれか？（上のカードを参照）<br>
+        ↓<br>
+        <span style="color:var(--accent3)">④ /incident 投入</span>：技術担当に時間窓とホストを伝える<br>
+        ↓<br>
+        <span style="color:var(--accent3)">⑤ spoke skill 実行</span>：/wp-tamper / /dns-tamper 等<br>
+        ↓<br>
+        <span style="color:var(--accent2)">⑥ リーダー判断</span>：対策実行のGo/NoGo<br>
+        ↓<br>
+        <span style="color:var(--accent3)">⑦ 顧客報告</span>：200字サマリを読み上げ → Pukiwikiチケット
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TAB: タイマー＆メモ ===== -->
+<div id="panel-timer" class="panel">
+
+  <div class="timer-bar">
+    <div>
+      <div class="timer-label">ELAPSED</div>
+      <div class="timer-display" id="timer-display">00:00</div>
+    </div>
+    <div class="timer-progress">
+      <div class="timer-fill" id="timer-fill"></div>
+    </div>
+    <div style="display:flex; gap:6px; flex-direction:column; align-items:flex-end">
+      <div class="timer-label" id="timer-remaining" style="color: var(--accent3)">残り 30:00</div>
+      <div style="display:flex; gap:6px;">
+        <button class="timer-btn btn-start" id="btn-start" onclick="startTimer()">START</button>
+        <button class="timer-btn btn-stop" id="btn-stop" onclick="stopTimer()" style="display:none">STOP</button>
+        <button class="timer-btn btn-reset" onclick="resetTimer()">RESET</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert warn" id="timer-alert" style="display:none">
+    <span class="alert-icon">⚠</span>
+    <span>残り<strong id="alert-remaining">-</strong>！ チケット作成を開始してください。</span>
+  </div>
+
+  <div class="section open">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-num">📝</div>
+      <div class="section-title">インシデントメモ（通話中リアルタイム記入）</div>
+      <span class="section-tag tag-required">記入</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="section-body">
+      <div class="sub-label">メモ（チケット提出の下書きにもなる）</div>
+      <textarea class="memo-area" id="main-memo" placeholder="【発生時刻】
+【報告者/症状】
+【影響範囲】
+【技術担当の調査結果】
+【対処内容】
+【復旧確認】"></textarea>
+
+      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+        <button onclick="stampTime()" style="font-family:var(--mono); font-size:10px; background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:2px; cursor:pointer;">
+          ⏱ 時刻スタンプ
+        </button>
+        <button onclick="copyMemo()" style="font-family:var(--mono); font-size:10px; background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:2px; cursor:pointer;">
+          📋 メモをコピー
+        </button>
+        <button onclick="clearMemo()" style="font-family:var(--mono); font-size:10px; background:var(--surface2); border:1px solid var(--border); color:var(--text-dim); padding:6px 12px; border-radius:2px; cursor:pointer;">
+          CLR
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" onclick="toggleSection(this)">
+      <div class="section-num">🎫</div>
+      <div class="section-title">Pukiwikiチケット用テンプレート</div>
+      <span class="section-tag tag-ok">提出用</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="section-body">
+      <textarea class="memo-area" id="ticket-memo" style="min-height:160px; color: var(--accent3)">
+**発生時刻**: 
+**トラブルの内容**: 
+**原因**: 
+**対処内容**: 
+**復旧確認**: 
+
+-- ロク解析システム出力 --
+攻撃元IP: 
+時間窓: 
+検出シグナル: 
+</textarea>
+      <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+        <button onclick="copyMemoById('ticket-memo', this)" style="font-family:var(--mono); font-size:10px; background:var(--accent); color:#000; border:none; padding:6px 12px; border-radius:2px; cursor:pointer; font-weight:700;">
+          チケット用コピー
+        </button>
+        <span style="font-family:var(--mono); font-size:9px; color:var(--text-dim)">→ Pukiwiki: http://133.42.49.140/trouble_ticket_137/</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// タブ切り替え
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  const panels = ['script','intake','routing','timer'];
+  const idx = panels.indexOf(name);
+  document.querySelectorAll('.tab')[idx].classList.add('active');
+  document.getElementById('panel-'+name).classList.add('active');
+}
+
+// セクション開閉
+function toggleSection(header) {
+  header.closest('.section').classList.toggle('open');
+}
+
+// チェック
+function toggleCheck(li) {
+  li.classList.toggle('done');
+  li.querySelector('.check-box').textContent = li.classList.contains('done') ? '✓' : '';
+}
+
+// コピー
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'COPIED!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+function copyField(id, btn) {
+  const text = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'COPIED!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+function copyMemo() {
+  const text = document.getElementById('main-memo').value;
+  navigator.clipboard.writeText(text);
+}
+
+function copyMemoById(id, btn) {
+  const text = document.getElementById(id).value;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'コピー完了!';
+    setTimeout(() => btn.textContent = 'チケット用コピー', 1500);
+  });
+}
+
+function clearMemo() { document.getElementById('main-memo').value = ''; }
+function clearForm() {
+  ['f-time','f-caller','f-incident-time','f-service','f-detail'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('f-category').value = '';
+  document.getElementById('f-host').value = '';
+  document.getElementById('cmd-output').style.display = 'none';
+}
+
+function stampTime() {
+  const now = new Date();
+  const hm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const ta = document.getElementById('main-memo');
+  ta.value += `\n[${hm}] `;
+  ta.focus();
+}
+
+// /incidentコマンド生成
+function generateIncidentCmd() {
+  const timeVal = document.getElementById('f-incident-time').value || '?';
+  const host = document.getElementById('f-host').value;
+  let hostKey = '';
+  if (host.includes('Victor')) hostKey = 'victor';
+  else if (host.includes('Bravo')) hostKey = 'bravo';
+  else if (host.includes('両方')) hostKey = 'victor bravo';
+  else hostKey = 'victor';
+
+  const now = new Date();
+  const nowStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const cmd = `/incident ${timeVal}-${nowStr} ${hostKey}`;
+
+  document.getElementById('cmd-text-output').textContent = cmd;
+  document.getElementById('cmd-output').style.display = 'flex';
+}
+
+// ルーティング詳細
+const routeDetails = {
+  web: {
+    title: '🌐 Web不正アクセス / 改ざん',
+    color: 'var(--accent)',
+    cmd: '/wp-tamper',
+    checks: ['Apacheアクセスログ確認', 'WordPress投稿・管理画面確認', 'wp-login.phpへのPOST多発チェック', 'PHPファイルの改ざんチェック', 'SQLインジェクション痕跡確認'],
+    log: '/var/log/httpd/access_log (victor)',
+    note: '改ざんが確認された場合、Webサービス停止をリーダーに提案（要承認）'
+  },
+  mail: {
+    title: '📧 メール異常 / スパムリレー',
+    color: 'var(--accent2)',
+    cmd: '/phishing',
+    checks: ['Sendmailキュー確認', 'SASL認証失敗ログ確認', 'IMAP brute確認（Courier-IMAP）', 'SPF/DKIM設定確認', '大量送信元IPの特定'],
+    log: '/var/log/maillog (victor/bravo)',
+    note: 'スパムリレーが確認された場合は顧客への告知を検討'
+  },
+  dns: {
+    title: '🔍 DNS異常',
+    color: 'var(--accent3)',
+    cmd: '/dns-tamper',
+    checks: ['named.confのallow-update確認', 'ゾーンファイル改ざん確認', 'AXFRリクエスト確認', 'DNS増幅攻撃（ANY）確認', 'Recursion設定確認'],
+    log: '/var/log/named.log (bravo)',
+    note: 'BravoがDNSプライマリ。nsupdate等の実行はdeny（settings.json）'
+  },
+  ddos: {
+    title: '💥 DDoS / ネットワーク過負荷',
+    color: 'var(--danger)',
+    cmd: '/ddos',
+    checks: ['MRTGグラフ確認', 'アクセス元IP分布確認', 'TCP SYN flood確認', 'RTXログ確認', '帯域使用量確認'],
+    log: 'MRTG (victor) / RTX1210ログ',
+    note: 'iptables DROP は ask（リーダー承認後に実行）'
+  },
+  ransom: {
+    title: '🔒 ランサムウェア / 権限昇格',
+    color: 'var(--warn)',
+    cmd: '/ransomware',
+    checks: ['不審なUID0アカウント確認（toor等）', '777パーミッションのホームディレクトリ確認', '不審なat/cronジョブ確認', 'pkexec試行確認', 'sudo unauthorized確認'],
+    log: '/var/log/secure / auth.log',
+    note: '侵害確認前に隔離しない。全貌把握→リーダー判断の順'
+  },
+  net: {
+    title: '🔌 ネットワーク / 機器障害',
+    color: '#aa88ff',
+    cmd: '手動調査',
+    checks: ['RTX1210/1200のログ確認', 'VLAN疎通確認', 'DHCPリース確認（10.1.11.50-99）', 'ASA（Cat3560経由telnet）確認', 'C3560-CX-1のログ確認'],
+    log: 'RTX syslog / Cat3560ログ',
+    note: 'ASAはCat3560からtelnetで接続（直接不可）'
+  }
+};
+
+function showRouteDetail(key) {
+  const d = routeDetails[key];
+  const html = `
+    <div class="section open">
+      <div class="section-header" style="border-bottom: 1px solid var(--border)">
+        <div class="section-num" style="background:${d.color}">▶</div>
+        <div class="section-title" style="color:${d.color}">${d.title}</div>
+        <span class="route-cmd" style="background:${d.color}; color:#000; font-size:10px; padding:4px 10px; border-radius:2px; font-family:var(--mono); font-weight:700">${d.cmd}</span>
+      </div>
+      <div class="section-body" style="display:block">
+        <div class="sub-label">確認コマンドリスト</div>
+        <ul class="checklist">
+          ${d.checks.map(c => `<li onclick="toggleCheck(this)"><div class="check-box"></div><span class="check-label">${c}</span></li>`).join('')}
+        </ul>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          <div class="info-field" style="flex:1; min-width:200px;">
+            <label>主なログ場所</label>
+            <input type="text" readonly value="${d.log}" style="color: var(--accent3); font-size:11px;" />
+          </div>
+        </div>
+        <div class="alert warn" style="margin-top:10px">
+          <span class="alert-icon">⚠</span>
+          <span>${d.note}</span>
+        </div>
+      </div>
+    </div>
+  `;
+  const el = document.getElementById('route-detail');
+  el.innerHTML = html;
+  el.style.display = 'block';
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// タイマー
+let timerInterval = null;
+let timerSeconds = 0;
+const LIMIT = 30 * 60; // 30分
+
+function startTimer() {
+  if (timerInterval) return;
+  document.getElementById('btn-start').style.display = 'none';
+  document.getElementById('btn-stop').style.display = 'inline-block';
+  timerInterval = setInterval(() => {
+    timerSeconds++;
+    updateTimerDisplay();
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  document.getElementById('btn-start').style.display = 'inline-block';
+  document.getElementById('btn-stop').style.display = 'none';
+}
+
+function resetTimer() {
+  stopTimer();
+  timerSeconds = 0;
+  updateTimerDisplay();
+  document.getElementById('timer-alert').style.display = 'none';
+}
+
+function updateTimerDisplay() {
+  const m = Math.floor(timerSeconds / 60);
+  const s = timerSeconds % 60;
+  const display = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  const remaining = LIMIT - timerSeconds;
+  const remM = Math.max(0, Math.floor(remaining / 60));
+  const remS = Math.max(0, remaining % 60);
+  const remStr = `${String(remM).padStart(2,'0')}:${String(remS).padStart(2,'0')}`;
+
+  const el = document.getElementById('timer-display');
+  const fill = document.getElementById('timer-fill');
+  const remEl = document.getElementById('timer-remaining');
+  const alertEl = document.getElementById('timer-alert');
+
+  el.textContent = display;
+  remEl.textContent = `残り ${remStr}`;
+
+  const pct = Math.min(100, (timerSeconds / LIMIT) * 100);
+  fill.style.width = pct + '%';
+
+  el.classList.remove('warn','danger');
+  fill.style.background = 'var(--accent3)';
+
+  if (remaining <= 5 * 60) {
+    el.classList.add('danger');
+    fill.style.background = 'var(--danger)';
+    alertEl.style.display = 'flex';
+    document.getElementById('alert-remaining').textContent = remStr;
+  } else if (remaining <= 10 * 60) {
+    el.classList.add('warn');
+    fill.style.background = 'var(--warn)';
+    alertEl.style.display = 'flex';
+    document.getElementById('alert-remaining').textContent = remStr;
+  }
+}
+</script>
+</body>
+</html>

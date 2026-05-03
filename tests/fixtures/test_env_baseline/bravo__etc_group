@@ -1,0 +1,10 @@
+wheel:*:0:root,manage
+operator:*:5:root
+
+# === appended from shirahama_test_log2.md ===
+wheel:*:0:root,manage
+operator:*:5:root
+
+# === appended from shirahama_test_log3.md ===
+wheel:*:0:root,manage
+operator:*:5:root

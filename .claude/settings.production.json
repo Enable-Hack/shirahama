@@ -184,8 +184,11 @@
     ]
   },
 
-  "_comment_env": "環境変数。Claude API key は別ルート (.env / 1Password) で読ませる。ここには書かない。",
+  "_comment_env": "環境変数。Claude API key は別ルート (.env / 1Password) で読ませる。ここには書かない。SSH_* は本番 manage@10.1.1.x へ向ける（VPN 経由でのみ到達可）。",
   "env": {
-    "SHIRAHAMA_MODE": "production"
+    "SHIRAHAMA_MODE": "production",
+    "SSH_VICTOR": "manage@10.1.1.2",
+    "SSH_BRAVO": "manage@10.1.1.1",
+    "SHIRAHAMA_DIR": "/Users/ryu/Desktop/shirahama"
   }
 }

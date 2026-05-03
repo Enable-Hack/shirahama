@@ -1,0 +1,1741 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>白浜 AI ログ分析パイプライン — システム全体図</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..900,0..100,0..1&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans+JP:wght@200;300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────
+   TOKENS
+   ───────────────────────────────────────────────── */
+:root {
+  --bg: #FFFFFF;
+  --paper: #FAF8F2;
+  --paper-deep: #F2EFE6;
+  --ink: #0F1115;
+  --ink-muted: #5A5C63;
+  --ink-soft: #8A8B92;
+  --rule: #E8E5DD;
+  --rule-strong: #1A1C22;
+
+  --c-ai: #B8740B;          /* warm amber for AI-automated phases */
+  --c-ai-bg: #FBF0DC;
+  --c-human: #BC2E1A;       /* deep coral for human phases */
+  --c-human-bg: #FBE7E1;
+  --c-mix: #1B2A4E;         /* ink blue for mixed/semi */
+  --c-mix-bg: #E5E9F2;
+  --c-flag: #DCB400;        /* yellow line / caution */
+
+  --font-display: 'Fraunces', 'IBM Plex Sans JP', serif;
+  --font-body: 'IBM Plex Sans', 'IBM Plex Sans JP', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  --maxw: 1280px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+  /* subtle paper grain */
+  background-image:
+    radial-gradient(circle at 25% 30%, rgba(184,116,11,0.015), transparent 50%),
+    radial-gradient(circle at 75% 70%, rgba(27,42,78,0.015), transparent 50%);
+}
+
+/* paper grain overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.4;
+  z-index: 1;
+  background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.04 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* ─────────────────────────────────────────────────
+   LAYOUT PRIMITIVES
+   ───────────────────────────────────────────────── */
+.wrap {
+  max-width: var(--maxw);
+  margin-inline: auto;
+  padding-inline: clamp(1.25rem, 4vw, 4rem);
+  position: relative;
+  z-index: 2;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.section-num {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+
+.section-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-style: italic;
+  font-size: clamp(2.2rem, 5.5vw, 4rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin-block: 0.4em 0.6em;
+  color: var(--ink);
+  font-variation-settings: "opsz" 144, "SOFT" 50, "WONK" 1;
+}
+
+.section-lede {
+  font-family: var(--font-body);
+  font-size: clamp(1rem, 1.4vw, 1.15rem);
+  color: var(--ink-muted);
+  max-width: 56ch;
+  line-height: 1.55;
+}
+
+section {
+  padding-block: clamp(4rem, 9vw, 8rem);
+  position: relative;
+}
+
+section + section {
+  border-top: 1px solid var(--rule);
+}
+
+/* ─────────────────────────────────────────────────
+   HERO
+   ───────────────────────────────────────────────── */
+.hero {
+  min-height: 100vh;
+  padding-top: clamp(3rem, 6vw, 5rem);
+  padding-bottom: clamp(4rem, 8vw, 7rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 1.25rem;
+  opacity: 0;
+  animation: fadeIn 0.8s 0.1s forwards;
+}
+
+.hero-meta-left,
+.hero-meta-right {
+  display: flex;
+  gap: 2rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.hero-meta strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.hero-body {
+  margin-top: clamp(3rem, 8vw, 6rem);
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3rem;
+  align-items: end;
+}
+
+.hero-title {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: clamp(3rem, 9vw, 8.5rem);
+  line-height: 0.92;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+  font-variation-settings: "opsz" 144, "SOFT" 30, "WONK" 0;
+}
+
+.hero-title .ital {
+  font-style: italic;
+  font-weight: 300;
+  font-variation-settings: "opsz" 144, "SOFT" 80, "WONK" 1;
+}
+
+.hero-title .accent {
+  color: var(--c-human);
+}
+
+.hero-title-line {
+  display: block;
+  overflow: hidden;
+}
+
+.hero-title-line span {
+  display: inline-block;
+  transform: translateY(110%);
+  animation: titleRise 1s cubic-bezier(0.2, 0.7, 0.1, 1) forwards;
+}
+
+.hero-title-line:nth-child(1) span { animation-delay: 0.2s; }
+.hero-title-line:nth-child(2) span { animation-delay: 0.35s; }
+.hero-title-line:nth-child(3) span { animation-delay: 0.5s; }
+
+@keyframes titleRise {
+  from { transform: translateY(110%); }
+  to { transform: translateY(0); }
+}
+
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 2.25rem;
+  text-align: right;
+  opacity: 0;
+  animation: fadeIn 0.8s 0.9s forwards;
+}
+
+.hero-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.hero-stat-num {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  font-weight: 400;
+  line-height: 1;
+  color: var(--ink);
+  font-variation-settings: "opsz" 144;
+}
+
+.hero-stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-top: 0.5rem;
+}
+
+.hero-pitch {
+  margin-top: clamp(3rem, 6vw, 5rem);
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 60ch);
+  gap: 3rem;
+  align-items: start;
+  border-top: 1px solid var(--rule);
+  padding-top: 1.5rem;
+  opacity: 0;
+  animation: fadeIn 0.8s 1.1s forwards;
+}
+
+.hero-pitch-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.hero-pitch-text {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: clamp(1.1rem, 2vw, 1.55rem);
+  line-height: 1.4;
+  color: var(--ink);
+  font-variation-settings: "opsz" 144;
+}
+
+.hero-pitch-text em {
+  font-style: italic;
+  color: var(--c-human);
+  font-variation-settings: "opsz" 144, "WONK" 1;
+}
+
+.scroll-cue {
+  position: absolute;
+  bottom: 2rem;
+  right: clamp(1.25rem, 4vw, 4rem);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  opacity: 0;
+  animation: fadeIn 0.8s 1.5s forwards;
+}
+
+.scroll-cue::after {
+  content: '';
+  width: 1px;
+  height: 28px;
+  background: linear-gradient(to bottom, var(--ink-soft), transparent);
+  animation: scrollPulse 2s ease-in-out infinite;
+}
+
+@keyframes scrollPulse {
+  0%, 100% { transform: scaleY(1); transform-origin: top; }
+  50% { transform: scaleY(0.4); }
+}
+
+@keyframes fadeIn {
+  to { opacity: 1; }
+}
+
+/* ─────────────────────────────────────────────────
+   SECTION HEADER (shared)
+   ───────────────────────────────────────────────── */
+.section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 3rem;
+  align-items: end;
+  margin-bottom: clamp(3rem, 6vw, 5rem);
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+@media (max-width: 768px) {
+  .section-head { grid-template-columns: 1fr; gap: 1.5rem; }
+}
+
+/* ─────────────────────────────────────────────────
+   01 — TIME (timeline bar)
+   ───────────────────────────────────────────────── */
+.timeline {
+  display: grid;
+  grid-template-columns: 30fr 90fr 30fr;
+  height: 140px;
+  border: 1px solid var(--ink);
+  position: relative;
+  overflow: hidden;
+}
+
+.tl-block {
+  position: relative;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-right: 1px solid var(--ink);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 1.2s cubic-bezier(0.7, 0, 0.3, 1);
+}
+
+.tl-block:last-child { border-right: none; }
+
+.tl-block.active { transform: scaleX(1); }
+
+.tl-block:nth-child(1) {
+  background: var(--paper);
+  transition-delay: 0s;
+}
+.tl-block:nth-child(2) {
+  background: var(--c-human-bg);
+  transition-delay: 0.3s;
+}
+.tl-block:nth-child(3) {
+  background: var(--c-ai-bg);
+  transition-delay: 0.6s;
+}
+
+.tl-block-inner {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.6s 0.8s ease, transform 0.6s 0.8s ease;
+}
+
+.tl-block.active .tl-block-inner {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tl-block:nth-child(2) .tl-block-inner { transition-delay: 1.1s; }
+.tl-block:nth-child(3) .tl-block-inner { transition-delay: 1.4s; }
+
+.tl-mins {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.tl-mins span {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-left: 0.4rem;
+  color: var(--ink-muted);
+}
+
+.tl-label {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.tl-key {
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+}
+
+.tl-key b { color: var(--ink); font-weight: 600; }
+
+.tl-eval {
+  margin-top: 2.5rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  border-top: 1px solid var(--rule);
+  padding-top: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .tl-eval { grid-template-columns: 1fr; }
+}
+
+.tl-eval-item .num {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 300;
+  font-style: italic;
+  line-height: 1;
+  color: var(--c-mix);
+  font-variation-settings: "opsz" 144, "WONK" 1;
+}
+
+.tl-eval-item h4 {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 500;
+  margin-block: 0.6rem 0.3rem;
+}
+
+.tl-eval-item p {
+  font-size: 0.92rem;
+  color: var(--ink-muted);
+  line-height: 1.55;
+}
+
+.tl-eval-item .tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-top: 0.6rem;
+  padding: 0.2em 0.6em;
+  border: 1px solid currentColor;
+}
+
+/* ─────────────────────────────────────────────────
+   02 — FLOW (phase swimlane)
+   ───────────────────────────────────────────────── */
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.phase {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 2rem;
+  padding-block: 2rem;
+  border-top: 1px solid var(--rule);
+  position: relative;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.phase:last-child { border-bottom: 1px solid var(--rule); }
+
+.phase.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.phase-num {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  font-weight: 300;
+  line-height: 0.9;
+  font-style: italic;
+  color: var(--ink);
+  font-variation-settings: "opsz" 144, "WONK" 1;
+}
+
+.phase-time {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--ink-soft);
+  margin-top: 0.4rem;
+  font-style: normal;
+}
+
+.phase-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.2fr) auto;
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .phase-body {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+.phase-name {
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 2.5vw, 2rem);
+  font-weight: 500;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.phase-name small {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-top: 0.4rem;
+}
+
+.phase-desc {
+  font-size: 0.95rem;
+  color: var(--ink-muted);
+  line-height: 1.55;
+}
+
+.phase-desc code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--paper-deep);
+  padding: 0.1em 0.4em;
+  color: var(--ink);
+  border-radius: 2px;
+}
+
+.phase-actor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.actor-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4em 0.9em;
+  border: 1px solid currentColor;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.actor-badge.ai { color: var(--c-ai); background: var(--c-ai-bg); border-color: var(--c-ai); }
+.actor-badge.human { color: var(--c-human); background: var(--c-human-bg); border-color: var(--c-human); }
+.actor-badge.semi { color: var(--c-mix); background: var(--c-mix-bg); border-color: var(--c-mix); }
+
+.actor-badge::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  display: inline-block;
+}
+
+.actor-badge.semi::before {
+  background: linear-gradient(135deg, var(--c-ai) 50%, var(--c-human) 50%);
+}
+
+/* ─────────────────────────────────────────────────
+   03 — SKILLS (command catalog)
+   ───────────────────────────────────────────────── */
+.skill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+}
+
+.skill {
+  background: var(--bg);
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  position: relative;
+  transition: background 0.3s ease, transform 0.3s ease;
+  cursor: default;
+  opacity: 0;
+  transform: translateY(15px);
+  transition: opacity 0.6s ease, transform 0.6s ease, background 0.3s ease;
+}
+
+.skill.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.skill::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 3px;
+  background: currentColor;
+  transition: width 0.4s cubic-bezier(0.5, 0, 0.2, 1);
+}
+
+.skill:hover {
+  background: var(--paper);
+}
+
+.skill:hover::before {
+  width: 100%;
+}
+
+.skill[data-actor="ai"] { color: var(--c-ai); }
+.skill[data-actor="semi"] { color: var(--c-mix); }
+.skill[data-actor="human"] { color: var(--c-human); }
+
+.skill-cmd {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--ink);
+  letter-spacing: 0;
+}
+
+.skill-cmd::before {
+  content: '/';
+  color: currentColor;
+}
+
+.skill-phase {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.skill-desc {
+  font-size: 0.9rem;
+  color: var(--ink-muted);
+  line-height: 1.55;
+  flex-grow: 1;
+}
+
+.skill-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.5rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--rule);
+}
+
+.skill-actor {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: currentColor;
+}
+
+.skill-arrow {
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  transition: transform 0.3s ease, color 0.3s ease;
+}
+
+.skill:hover .skill-arrow {
+  transform: translateX(4px);
+  color: var(--ink);
+}
+
+/* ─────────────────────────────────────────────────
+   04 — ARCHITECTURE (4 layer)
+   ───────────────────────────────────────────────── */
+.arch {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: clamp(2rem, 5vw, 5rem);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .arch { grid-template-columns: 1fr; }
+}
+
+.arch-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+}
+
+.arch-source,
+.arch-sink {
+  border: 1px dashed var(--ink-muted);
+  padding: 1rem 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  text-align: center;
+  background: var(--paper);
+}
+
+.arch-layer {
+  border: 1px solid var(--ink);
+  background: var(--bg);
+  padding: 1.4rem 1.5rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 1.5rem;
+  align-items: center;
+  position: relative;
+  opacity: 0;
+  transform: translateX(-20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.arch-layer.in-view {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.arch-layer:nth-child(2) { transition-delay: 0.1s; }
+.arch-layer:nth-child(3) { transition-delay: 0.25s; }
+.arch-layer:nth-child(4) { transition-delay: 0.4s; }
+.arch-layer:nth-child(5) { transition-delay: 0.55s; }
+.arch-layer:nth-child(6) { transition-delay: 0.7s; }
+
+.arch-num {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--c-mix);
+  font-variation-settings: "opsz" 144, "WONK" 1;
+}
+
+.arch-info h4 {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 500;
+  margin-bottom: 0.2rem;
+}
+
+.arch-info p {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+  letter-spacing: 0.04em;
+}
+
+.arch-info p code {
+  background: var(--paper-deep);
+  padding: 0 0.3em;
+}
+
+.arch-tag {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.3em 0.7em;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+.arch-gate {
+  border: 2px solid var(--c-human);
+  background: var(--c-human-bg);
+}
+
+.arch-gate .arch-num,
+.arch-gate .arch-tag {
+  color: var(--c-human);
+}
+
+.arch-gate .arch-tag {
+  border-color: var(--c-human);
+  background: var(--bg);
+}
+
+.arch-arrow {
+  height: 18px;
+  display: flex;
+  justify-content: center;
+  position: relative;
+}
+
+.arch-arrow::after {
+  content: '';
+  width: 1px;
+  height: 100%;
+  background: var(--ink-muted);
+  position: relative;
+}
+
+.arch-arrow::before {
+  content: '▼';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.6rem;
+  color: var(--ink-muted);
+  background: var(--bg);
+  padding: 0 4px;
+}
+
+/* flowing dot animation */
+.arch-stack {
+  --dot-time: 5s;
+}
+
+.arch-stack::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-ai);
+  transform: translateX(-50%);
+  animation: flowDown var(--dot-time) ease-in-out infinite;
+  z-index: 5;
+  box-shadow: 0 0 0 3px rgba(184,116,11,0.18);
+}
+
+@keyframes flowDown {
+  0% { top: -10px; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: calc(100% + 10px); opacity: 0; }
+}
+
+.arch-side h3 {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 500;
+  margin-bottom: 1rem;
+  font-style: italic;
+  font-variation-settings: "opsz" 144, "WONK" 1;
+}
+
+.arch-side ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.arch-side li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  padding-bottom: 1.2rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.arch-side li:last-child { border: none; padding-bottom: 0; }
+
+.arch-side li b {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-mix);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.arch-side li span {
+  color: var(--ink-muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+/* ─────────────────────────────────────────────────
+   05 — TEAM (4 roles)
+   ───────────────────────────────────────────────── */
+.team {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+}
+
+@media (max-width: 768px) {
+  .team { grid-template-columns: 1fr; }
+}
+
+.role {
+  background: var(--bg);
+  padding: 2rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  opacity: 0;
+  transform: translateY(15px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.role.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.role-tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.role-name {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 500;
+  line-height: 1.1;
+  font-style: italic;
+  font-variation-settings: "opsz" 144, "WONK" 1;
+}
+
+.role-tools {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+.role-tools b {
+  color: var(--ink-soft);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.role-action {
+  font-size: 0.92rem;
+  color: var(--ink-muted);
+  line-height: 1.55;
+  margin-top: 0.4rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--rule);
+}
+
+.role.lead {
+  background: var(--paper);
+}
+
+.role.lead .role-name {
+  color: var(--c-human);
+}
+
+/* ─────────────────────────────────────────────────
+   06 — YELLOW LINE
+   ───────────────────────────────────────────────── */
+.yellow {
+  border-top: 1px solid var(--rule);
+  position: relative;
+}
+
+.yellow-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 0;
+  margin-bottom: 3rem;
+  border-block: 6px solid var(--ink);
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--c-flag) 0,
+    var(--c-flag) 16px,
+    var(--ink) 16px,
+    var(--ink) 32px
+  );
+  height: 60px;
+  position: relative;
+  overflow: hidden;
+}
+
+.yellow-banner-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--bg);
+  width: 60%;
+  margin: auto;
+  border-left: 6px solid var(--ink);
+  border-right: 6px solid var(--ink);
+}
+
+.yellow-list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+}
+
+.yellow-item {
+  background: var(--bg);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  opacity: 0;
+  transform: translateY(15px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.yellow-item.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.yellow-item-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--c-human);
+  text-transform: uppercase;
+}
+
+.yellow-item-label::before {
+  content: '×';
+  font-size: 1.4rem;
+  line-height: 0.7;
+  font-weight: 400;
+}
+
+.yellow-item h4 {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.yellow-item p {
+  font-size: 0.88rem;
+  color: var(--ink-muted);
+  line-height: 1.55;
+}
+
+/* ─────────────────────────────────────────────────
+   FOOTER
+   ───────────────────────────────────────────────── */
+footer {
+  border-top: 1px solid var(--ink);
+  padding-block: 2.5rem 4rem;
+  margin-top: 0;
+}
+
+.foot-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.foot-row b { color: var(--ink); font-weight: 500; }
+
+/* ─────────────────────────────────────────────────
+   REDUCED MOTION
+   ───────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ─── HERO ─── -->
+<header class="hero">
+  <div class="wrap" style="display:flex; flex-direction:column; height:100%; justify-content:space-between;">
+
+    <div class="hero-meta">
+      <div class="hero-meta-left">
+        <span><strong>WHISKEY</strong> / Booth 1</span>
+        <span>SCCS 2026 二次予選</span>
+        <span>com1.local</span>
+      </div>
+      <div class="hero-meta-right">
+        <span>D-2</span>
+        <span><strong>2026.05.05</strong> 開催</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="hero-body">
+        <h1 class="hero-title">
+          <span class="hero-title-line"><span>白浜&nbsp;AI</span></span>
+          <span class="hero-title-line"><span>ログ分析<span class="ital">パイプライン</span></span></span>
+          <span class="hero-title-line"><span>システム<span class="accent">全体図</span></span></span>
+        </h1>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <span class="hero-stat-num">8</span>
+            <span class="hero-stat-label">slash<br>commands</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-num">41</span>
+            <span class="hero-stat-label">detection<br>patterns</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-num">6</span>
+            <span class="hero-stat-label">攻撃<br>カテゴリ</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-pitch">
+        <span class="hero-pitch-label">— 30 秒解説</span>
+        <p class="hero-pitch-text">
+          電話受電起点のインシデント対応を、AI で <em>半自動化</em> するパイプライン。
+          ログ取得・攻撃検知・顧客向け文面・PukiWiki チケットまで一気通貫で生成し、
+          <em>人間が判断と最終承認だけに集中</em> できる構成です。
+          破壊的なコマンドは settings.json で物理ブロック済。
+        </p>
+      </div>
+    </div>
+
+    <div class="scroll-cue">
+      Scroll&nbsp;to&nbsp;explore
+    </div>
+  </div>
+</header>
+
+
+<!-- ─── 01 TIME ─── -->
+<section id="time" data-reveal>
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <p class="section-num">§ 01 — 時間構造</p>
+        <h2 class="section-title">2&nbsp;時間半の<br>戦闘地図</h2>
+      </div>
+      <p class="section-lede">
+        本番は接続確認 30 分・演習 90 分・チケット作成 30 分の三幕構成。
+        本システムは中央 90 分の主戦場と、最後 30 分のチケット作成に最適化されている。
+      </p>
+    </div>
+
+    <div class="timeline" data-timeline>
+      <div class="tl-block">
+        <div class="tl-block-inner">
+          <span class="tl-label">接続確認</span>
+          <span class="tl-mins">30<span>min</span></span>
+        </div>
+      </div>
+      <div class="tl-block">
+        <div class="tl-block-inner">
+          <span class="tl-label">演習本番 — 主戦場</span>
+          <span class="tl-mins">90<span>min</span></span>
+        </div>
+      </div>
+      <div class="tl-block">
+        <div class="tl-block-inner">
+          <span class="tl-label">チケット作成</span>
+          <span class="tl-mins">30<span>min</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="tl-key">
+      <span><b>Trigger →</b> 電話受電 / メール / 監視通報</span>
+      <span><b>Goal →</b> 30 分以内に 1 インシデント完了</span>
+      <span><b>End →</b> PukiWiki に 1 件 1 チケット投稿</span>
+    </div>
+
+    <div class="tl-eval">
+      <div class="tl-eval-item">
+        <span class="num">01</span>
+        <h4>技術的解決力</h4>
+        <p>障害の原因特定・封じ込め・復旧。analyzer + Mock + Claude の三層判断で網羅。</p>
+        <span class="tag" style="color:var(--c-ai);">AI 主導</span>
+      </div>
+      <div class="tl-eval-item">
+        <span class="num">02</span>
+        <h4>顧客対応力</h4>
+        <p>電話・メールでのリアルタイム対応。Claude が文面を生成、温度感調整は人間。</p>
+        <span class="tag" style="color:var(--c-mix);">AI 補助</span>
+      </div>
+      <div class="tl-eval-item">
+        <span class="num">03</span>
+        <h4>チケット記載</h4>
+        <p>PukiWiki への正確・網羅的な記録。/ticket がマークアップを自動生成。</p>
+        <span class="tag" style="color:var(--c-ai);">AI 主導</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ─── 02 FLOW (phases) ─── -->
+<section id="flow" data-reveal>
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <p class="section-num">§ 02 — 6 フェーズ</p>
+        <h2 class="section-title">受電から<br>チケット投稿まで</h2>
+      </div>
+      <p class="section-lede">
+        JPCERT インシデントハンドリング 4 段階を白浜の運用に再展開した 6 フェーズ。
+        各行に「いつ・誰が・何を」が刻まれ、AI と人間の境界が一目でわかる。
+      </p>
+    </div>
+
+    <div class="flow">
+
+      <div class="phase" data-reveal-item>
+        <span class="phase-num">01<span class="phase-time">T+0:00</span></span>
+        <div class="phase-body">
+          <div>
+            <h3 class="phase-name">受電<small>Phone Intake</small></h3>
+          </div>
+          <p class="phase-desc">電話応対係が <code>01_受電ヒアリングシート</code> を埋める。事実と申告を分け、時刻・症状・連絡者を確定する。</p>
+          <div class="phase-actor"><span class="actor-badge human">Human</span></div>
+        </div>
+      </div>
+
+      <div class="phase" data-reveal-item>
+        <span class="phase-num">02<span class="phase-time">T+0:02</span></span>
+        <div class="phase-body">
+          <div>
+            <h3 class="phase-name">トリアージ<small>Auto Triage</small></h3>
+          </div>
+          <p class="phase-desc"><code>/incident &lt;時間窓&gt; &lt;ホスト&gt;</code> を投入。ssh ログ取得 → analyzer 41 pattern → Mock + Claude 二段判断 → /check ルーティング提示 → SOC summary → 📞 顧客追加質問リストを §1〜§7 で連続自動実行。</p>
+          <div class="phase-actor"><span class="actor-badge ai">AI Auto</span></div>
+        </div>
+      </div>
+
+      <div class="phase" data-reveal-item>
+        <span class="phase-num">03<span class="phase-time">T+0:10</span></span>
+        <div class="phase-body">
+          <div>
+            <h3 class="phase-name">直し方の決定<small>Fix Strategy</small></h3>
+          </div>
+          <p class="phase-desc"><code>/check:*</code> で個別痕跡確認、<code>/playbook:*</code> で封じ込め＋復旧コマンド提案 (全項目「リーダー承認後」明記)。Go / NoGo は指揮係。</p>
+          <div class="phase-actor"><span class="actor-badge semi">AI ✕ Human</span></div>
+        </div>
+      </div>
+
+      <div class="phase" data-reveal-item>
+        <span class="phase-num">04<span class="phase-time">T+0:15</span></span>
+        <div class="phase-body">
+          <div>
+            <h3 class="phase-name">対応実施<small>Response</small></h3>
+          </div>
+          <p class="phase-desc">承認済みコマンドを Claude が Bash 実行。<code>settings.json</code> の deny / ask / allow 三層が物理ゲートとして発動。破壊系は人間プロンプトで承認後のみ実行。</p>
+          <div class="phase-actor"><span class="actor-badge semi">AI ✕ Human</span></div>
+        </div>
+      </div>
+
+      <div class="phase" data-reveal-item>
+        <span class="phase-num">05<span class="phase-time">T+0:25</span></span>
+        <div class="phase-body">
+          <div>
+            <h3 class="phase-name">完了一次連絡<small>Customer Notification</small></h3>
+          </div>
+          <p class="phase-desc"><code>/report</code> がトリアージ + 対応記録を読んで、04 テンプレ全種 (顧客担当者 / 経営層 300 字 / ユーザ / メール正式記録) を実データで自動充填。完了 / 一次対応完了モードを自動切替。</p>
+          <div class="phase-actor"><span class="actor-badge ai">AI Auto</span></div>
+        </div>
+      </div>
+
+      <div class="phase" data-reveal-item>
+        <span class="phase-num">06<span class="phase-time">T+90</span></span>
+        <div class="phase-body">
+          <div>
+            <h3 class="phase-name">チケット作成<small>PukiWiki Ticket</small></h3>
+          </div>
+          <p class="phase-desc"><code>/ticket</code> が PukiWiki マークアップで 5 フィールド (発生時刻 / 内容 / 原因＋ログ引用 / 対処 / 復旧確認) を生成。投稿は人間 (認証情報を Claude に渡さない方針)。</p>
+          <div class="phase-actor"><span class="actor-badge ai">AI Auto</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ─── 03 SKILLS ─── -->
+<section id="skills" data-reveal>
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <p class="section-num">§ 03 — 8 commands</p>
+        <h2 class="section-title">slash で<br>呼ぶ道具一式</h2>
+      </div>
+      <p class="section-lede">
+        ハブ <code>/incident</code> + 5 本の playbook + 報告系 2 本 (+ 内部ヘルパ多数) で構成。
+        Claude Code 上で <code>/</code> を打つと自動補完される。
+      </p>
+    </div>
+
+    <div class="skill-grid">
+
+      <div class="skill" data-actor="ai" data-reveal-item>
+        <span class="skill-cmd">incident</span>
+        <span class="skill-phase">Phase 02 — Hub</span>
+        <p class="skill-desc">受電起点のエントリ。ログ取得から analyzer / Mock / Claude / 検証層を §1〜§7 まで連続実行し、SOC サマリ + 📞 顧客追加質問まで出す。</p>
+        <div class="skill-foot">
+          <span class="skill-actor">AI Auto</span>
+          <span class="skill-arrow">→</span>
+        </div>
+      </div>
+
+      <div class="skill" data-actor="ai" data-reveal-item>
+        <span class="skill-cmd">check:*</span>
+        <span class="skill-phase">Phase 03 — Per-vuln</span>
+        <p class="skill-desc">23 本の脆弱性別ピンポイント検査。pattern_tag → /check 早見表で /incident から自動推奨される。並行起動可。</p>
+        <div class="skill-foot">
+          <span class="skill-actor">AI Auto</span>
+          <span class="skill-arrow">→</span>
+        </div>
+      </div>
+
+      <div class="skill" data-actor="ai" data-reveal-item>
+        <span class="skill-cmd">scenario:*</span>
+        <span class="skill-phase">Phase 03 — Killchain</span>
+        <p class="skill-desc">複数 pattern 同時発火時の連鎖アグリゲータ。3 シナリオ (recon→RCE→DB / DNS spoof→phish / VPN abuse) を一括起動。</p>
+        <div class="skill-foot">
+          <span class="skill-actor">AI Auto</span>
+          <span class="skill-arrow">→</span>
+        </div>
+      </div>
+
+      <div class="skill" data-actor="semi" data-reveal-item>
+        <span class="skill-cmd">playbook:wp-tamper</span>
+        <span class="skill-phase">Phase 03/04 — Fix</span>
+        <p class="skill-desc">WordPress / RainLoop / PHP 脆弱性攻撃の深掘り。封じ込め + 復旧コマンドを「リーダー承認後」明記で提案。</p>
+        <div class="skill-foot">
+          <span class="skill-actor">AI × Human</span>
+          <span class="skill-arrow">→</span>
+        </div>
+      </div>
+
+      <div class="skill" data-actor="semi" data-reveal-item>
+        <span class="skill-cmd">playbook:dns-tamper</span>
+        <span class="skill-phase">Phase 03/04 — Fix</span>
+        <p class="skill-desc">BIND の nsupdate / AXFR / amplification。ゾーン書き換え系コマンドは settings.json で deny。</p>
+        <div class="skill-foot">
+          <span class="skill-actor">AI × Human</span>
+          <span class="skill-arrow">→</span>
+        </div>
+      </div>
+
+      <div class="skill" data-actor="semi" data-reveal-item>
+        <span class="skill-cmd">playbook:phishing</span>
+        <span class="skill-phase">Phase 03/04 — Fix</span>
+        <p class="skill-desc">フィッシング・不審メール対応。受電通報 or maillog 異常 (mail/sasl-failed, mail/burst) をトリガー。</p>
+        <div class="skill-foot">
+          <span class="skill-actor">AI × Human</span>
+          <span class="skill-arrow">→</span>
+        </div>
+      </div>
+
+      <div class="skill" data-actor="semi" data-reveal-item>
+        <span class="skill-cmd">playbook:ddos</span>
+        <span class="skill-phase">Phase 03/04 — Fix</span>
+        <p class="skill-desc">HTTP flood / DNS amplification / SYN flood の切り分けと対応。同一 IP 多発が主シグナル。</p>
+        <div class="skill-foot">
+          <span class="skill-actor">AI × Human</span>
+          <span class="skill-arrow">→</span>
+        </div>
+      </div>
+
+      <div class="skill" data-actor="semi" data-reveal-item>
+        <span class="skill-cmd">playbook:ransomware</span>
+        <span class="skill-phase">Phase 03/04 — Fix</span>
+        <p class="skill-desc">ランサム / 横展開 / 内部不正対応。ファイル mtime と sudo ログから感染範囲特定。</p>
+        <div class="skill-foot">
+          <span class="skill-actor">AI × Human</span>
+          <span class="skill-arrow">→</span>
+        </div>
+      </div>
+
+      <div class="skill" data-actor="ai" data-reveal-item>
+        <span class="skill-cmd">report</span>
+        <span class="skill-phase">Phase 05 — Customer</span>
+        <p class="skill-desc">トリアージ出力を読んで 04 テンプレを実データ充填。顧客担当者 / 経営層 / ユーザ / メール / 一次対応完了の 5 種を画面出力。</p>
+        <div class="skill-foot">
+          <span class="skill-actor">AI Auto</span>
+          <span class="skill-arrow">→</span>
+        </div>
+      </div>
+
+      <div class="skill" data-actor="ai" data-reveal-item>
+        <span class="skill-cmd">ticket</span>
+        <span class="skill-phase">Phase 06 — PukiWiki</span>
+        <p class="skill-desc">対応記録から PukiWiki マークアップ 1 件分を生成。発生時刻・原因 (ログ引用付)・対処時系列・復旧確認を埋める。</p>
+        <div class="skill-foot">
+          <span class="skill-actor">AI Auto</span>
+          <span class="skill-arrow">→</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ─── 04 ARCHITECTURE ─── -->
+<section id="arch" data-reveal>
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <p class="section-num">§ 04 — Architecture</p>
+        <h2 class="section-title">4 層 ＋<br>物理ゲート</h2>
+      </div>
+      <p class="section-lede">
+        観測 (analyzer) → 判断 (Mock + Claude) → 検証 (validator) → 提案 → settings.json 物理ゲート。
+        LLM が暴走しても実機に届かない設計。
+      </p>
+    </div>
+
+    <div class="arch">
+      <div class="arch-stack">
+
+        <div class="arch-source">/var/log/* &nbsp; (httpd / secure / maillog / named)</div>
+        <div class="arch-arrow"></div>
+
+        <div class="arch-layer" data-reveal-item>
+          <span class="arch-num">01</span>
+          <div class="arch-info">
+            <h4>観測層 — Analyzer</h4>
+            <p><code>agent/analyzer.py</code> · 41 pattern · 6 カテゴリ汎用検出</p>
+          </div>
+          <span class="arch-tag">Rule-based</span>
+        </div>
+        <div class="arch-arrow"></div>
+
+        <div class="arch-layer" data-reveal-item>
+          <span class="arch-num">02</span>
+          <div class="arch-info">
+            <h4>判断層 1 — Mock Backend</h4>
+            <p><code>mock_backend.py</code> · whitelist filter + known-bad 即 block</p>
+          </div>
+          <span class="arch-tag">Deterministic</span>
+        </div>
+        <div class="arch-arrow"></div>
+
+        <div class="arch-layer" data-reveal-item>
+          <span class="arch-num">03</span>
+          <div class="arch-info">
+            <h4>判断層 2 — Claude Backend</h4>
+            <p><code>claude_backend.py</code> · grey signal の意味推定 + 文面生成</p>
+          </div>
+          <span class="arch-tag">LLM</span>
+        </div>
+        <div class="arch-arrow"></div>
+
+        <div class="arch-layer" data-reveal-item>
+          <span class="arch-num">04</span>
+          <div class="arch-info">
+            <h4>検証層 — Validator</h4>
+            <p><code>validator.py</code> · ReDoS / 壊れた regex を all-or-nothing 棄却</p>
+          </div>
+          <span class="arch-tag">Hard-fail</span>
+        </div>
+        <div class="arch-arrow"></div>
+
+        <div class="arch-layer arch-gate" data-reveal-item>
+          <span class="arch-num">×</span>
+          <div class="arch-info">
+            <h4>物理ゲート — settings.json</h4>
+            <p><code>deny:67</code> / <code>ask:37</code> / <code>allow:64</code></p>
+          </div>
+          <span class="arch-tag">Physical Gate</span>
+        </div>
+        <div class="arch-arrow"></div>
+
+        <div class="arch-sink">→ 実機 (victor 10.1.1.2 / bravo 10.1.1.1)</div>
+
+      </div>
+
+      <aside class="arch-side">
+        <h3>分離の理由</h3>
+        <ul>
+          <li>
+            <b>観測層</b>
+            <span>「動き続ける」が責務。ルールベースで LLM 不要、可用性の下支え。</span>
+          </li>
+          <li>
+            <b>判断層 1</b>
+            <span>配布アカウント / 自チーム IP を物理 drop し、Claude API への流量を ~80% 削減。</span>
+          </li>
+          <li>
+            <b>判断層 2</b>
+            <span>「質を上げる」が責務。grey signal だけ集約し、顧客向け文面まで生成。</span>
+          </li>
+          <li>
+            <b>検証層</b>
+            <span>「暴走を止める」が責務。LLM 出力の壊れた regex / ReDoS を all-or-nothing 棄却。</span>
+          </li>
+          <li>
+            <b>ゲート</b>
+            <span>nsupdate / systemctl stop / Edit(/etc/**) は実行段階で物理ブロック。</span>
+          </li>
+        </ul>
+      </aside>
+    </div>
+  </div>
+</section>
+
+
+<!-- ─── 05 TEAM ─── -->
+<section id="team" data-reveal>
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <p class="section-num">§ 05 — Team</p>
+        <h2 class="section-title">4 人 1 チーム<br>役割分担</h2>
+      </div>
+      <p class="section-lede">
+        AI を扱うのは技術調査係のみ。他 3 名は AI 出力の読み手 or 受け手として動く。
+        Claude Code を 4 人で同時に触らない。
+      </p>
+    </div>
+
+    <div class="team">
+      <div class="role" data-reveal-item>
+        <span class="role-tag">Phone</span>
+        <h3 class="role-name">電話応対係</h3>
+        <div class="role-tools"><b>主な道具</b>01 受電シート / 04 完了報告 / /report 出力</div>
+        <p class="role-action">/report の出力を読んで顧客に折り返し。AI 操作はしない。/incident §7 の「📞 顧客追加質問」を即電話で実行。</p>
+      </div>
+      <div class="role" data-reveal-item>
+        <span class="role-tag">Record</span>
+        <h3 class="role-name">記録係</h3>
+        <div class="role-tools"><b>主な道具</b>02 引き継ぎテンプレ / ホワイトボード</div>
+        <p class="role-action">/incident 出力を時系列でホワイトボード転記。同時に複数件来たら 2 件目応対の応援。</p>
+      </div>
+      <div class="role" data-reveal-item>
+        <span class="role-tag">Tech</span>
+        <h3 class="role-name">技術調査係</h3>
+        <div class="role-tools"><b>主な道具</b>Claude Code 全般 / NW・サーバ実機</div>
+        <p class="role-action">本システムのメイン操作者。/incident → /check → /playbook → /report → /ticket を独占的に呼ぶ。</p>
+      </div>
+      <div class="role lead" data-reveal-item>
+        <span class="role-tag">Lead</span>
+        <h3 class="role-name">指揮係</h3>
+        <div class="role-tools"><b>主な道具</b>05 全体チェックシート / 全出力俯瞰</div>
+        <p class="role-action">Go / NoGo 判定。/playbook 提示の対策コマンド承認、/report /ticket ドラフトレビュー、優先度の並び替え。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ─── 06 YELLOW LINE ─── -->
+<section id="yellow" data-reveal class="yellow">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <p class="section-num">§ 06 — Yellow Line</p>
+        <h2 class="section-title">やらないこと</h2>
+      </div>
+      <p class="section-lede">
+        本番までに着手しないこと、AI に任せないこと。「触らない哲学」を機能の不在として宣言する。
+      </p>
+    </div>
+
+    <div class="yellow-banner">
+      <span class="yellow-banner-text">CAUTION&nbsp;·&nbsp;DO&nbsp;NOT&nbsp;CROSS</span>
+    </div>
+
+    <ul class="yellow-list">
+      <li class="yellow-item" data-reveal-item>
+        <span class="yellow-item-label">Never</span>
+        <h4>AI が顧客に直接電話 / メール送信</h4>
+        <p>採点軸「顧客対応力」は人間の温度感調整が本質。AI は文面生成までで停止する。</p>
+      </li>
+      <li class="yellow-item" data-reveal-item>
+        <span class="yellow-item-label">Never</span>
+        <h4>AI が破壊系コマンドを自動実行</h4>
+        <p>nsupdate / systemctl stop / Edit(/etc/**) は settings.json で物理ブロック済。Claude が善意で提示しても通らない。</p>
+      </li>
+      <li class="yellow-item" data-reveal-item>
+        <span class="yellow-item-label">Never</span>
+        <h4>AI が PukiWiki に直接投稿</h4>
+        <p>認証情報を Claude に渡さない方針。/ticket はマークアップ生成までで、投稿は人間が責任を持つ。</p>
+      </li>
+      <li class="yellow-item" data-reveal-item>
+        <span class="yellow-item-label">Never</span>
+        <h4>AI が複数インシデントの優先度を決める</h4>
+        <p>優先度判定は指揮係の領域。AI が割り込むと混乱する。</p>
+      </li>
+      <li class="yellow-item" data-reveal-item>
+        <span class="yellow-item-label">Never</span>
+        <h4>動的な攻撃カテゴリ再判定</h4>
+        <p>1 件ごとに /incident を再起動すれば足りる。動的リ分類は実装複雑度に見合わない。</p>
+      </li>
+      <li class="yellow-item" data-reveal-item>
+        <span class="yellow-item-label">Never</span>
+        <h4>未知攻撃カテゴリの新規 pattern 動的生成</h4>
+        <p>6 カテゴリ汎用化の設計判断と矛盾。本番は既存 pattern で押し、未知は人間判断に倒す。</p>
+      </li>
+    </ul>
+  </div>
+</section>
+
+
+<!-- ─── FOOTER ─── -->
+<footer>
+  <div class="wrap">
+    <div class="foot-row">
+      <div>
+        <b>白浜 AI ログ分析パイプライン</b> · 2026-05-03 generated
+      </div>
+      <div>
+        Whiskey / Booth 1 · com1.local
+      </div>
+      <div>
+        <b>Trigger</b> Phone → <b>Goal</b> 30 min/incident
+      </div>
+    </div>
+  </div>
+</footer>
+
+
+<script>
+/* ─────────────────────────────────────────────────
+   SCROLL REVEAL
+   ───────────────────────────────────────────────── */
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('in-view');
+      // for the timeline, also animate the bars
+      const tl = entry.target.querySelector('[data-timeline]');
+      if (tl) {
+        tl.querySelectorAll('.tl-block').forEach(b => b.classList.add('active'));
+      }
+    }
+  });
+}, {
+  threshold: 0.15,
+  rootMargin: '0px 0px -10% 0px'
+});
+
+document.querySelectorAll('[data-reveal-item]').forEach(el => observer.observe(el));
+document.querySelectorAll('[data-reveal]').forEach(el => observer.observe(el));
+
+/* timeline (separate observer with lower threshold) */
+const tlObs = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.querySelectorAll('.tl-block').forEach(b => b.classList.add('active'));
+      tlObs.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.3 });
+
+document.querySelectorAll('[data-timeline]').forEach(el => tlObs.observe(el));
+</script>
+
+</body>
+</html>

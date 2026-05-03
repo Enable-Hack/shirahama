@@ -1,0 +1,10 @@
+# テスト環境ベースラインログの抽出先
+# 使い方:
+#   python tests/extract_test_logs.py docs/shirahama_test_log.md  tests/fixtures/test_env_baseline/
+#   python tests/extract_test_logs.py docs/shirahama_test_log2.md tests/fixtures/test_env_baseline/ --append
+#   python tests/extract_test_logs.py docs/shirahama_test_log3.md tests/fixtures/test_env_baseline/ --append
+#
+# その後:
+#   python -c "from agent import analyzer; signals = analyzer.run('tests/fixtures/test_env_baseline/'); print(len(signals))"
+#
+# 期待: signals = 0 件（攻撃なしベースラインなので誤検知 0 が正解）

@@ -1,0 +1,3127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>白浜 AI ログ分析パイプライン — システム仕様書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FFFFFF;
+  --bg-soft: #F8F7F4;
+  --bg-code: #F4F2EC;
+  --bg-callout: #FAF6EC;
+  --bg-warn: #FBEFEA;
+  --ink: #14181F;
+  --ink-2: #3A3F4A;
+  --ink-3: #6B707B;
+  --ink-4: #9CA0A8;
+  --rule: #E2DED5;
+  --rule-2: #D2CDC0;
+  --link: #1F4E8C;
+  --link-hover: #0E3168;
+  --accent: #B95625;
+  --warn: #B73E1F;
+  --good: #2E6B3D;
+
+  --font-sans: 'IBM Plex Sans', 'IBM Plex Sans JP', -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --content-w: 760px;
+  --toc-w: 280px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ─────────────────────────── LAYOUT ─────────────────────────── */
+.page {
+  display: grid;
+  grid-template-columns: var(--toc-w) minmax(0, 1fr);
+  max-width: 1240px;
+  margin: 0 auto;
+  gap: 0;
+  min-height: 100vh;
+}
+
+aside.toc {
+  border-right: 1px solid var(--rule);
+  padding: 2.5rem 1.5rem 2rem 2rem;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
+  font-size: 13.5px;
+  background: var(--bg);
+}
+
+main {
+  padding: 3rem clamp(1.5rem, 4vw, 4rem) 6rem;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .page { grid-template-columns: 1fr; }
+  aside.toc {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+    padding: 1.5rem;
+  }
+  main { padding: 2rem 1.25rem 4rem; }
+}
+
+/* ─────────────────────────── TOC ─────────────────────────── */
+.toc-head {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 1rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.toc-section {
+  margin-bottom: 1.4rem;
+}
+
+.toc-section-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 0.5rem;
+}
+
+.toc ul {
+  list-style: none;
+}
+
+.toc ul li {
+  margin-bottom: 0.15rem;
+}
+
+.toc ul li a {
+  display: block;
+  padding: 0.25rem 0.6rem;
+  color: var(--ink-2);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  font-size: 13.5px;
+  line-height: 1.45;
+  border-radius: 0;
+}
+
+.toc ul li a:hover {
+  color: var(--link);
+  border-left-color: var(--rule-2);
+  background: var(--bg-soft);
+}
+
+.toc ul li a.active {
+  color: var(--link);
+  border-left-color: var(--link);
+  background: var(--bg-soft);
+  font-weight: 500;
+}
+
+.toc ul ul {
+  margin-left: 0.6rem;
+}
+
+.toc ul ul li a {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  padding: 0.18rem 0.55rem;
+}
+
+/* ─────────────────────────── CONTENT ─────────────────────────── */
+.doc-meta {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 1.25rem;
+  margin-bottom: 2rem;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+h1 {
+  font-size: clamp(1.85rem, 4vw, 2.5rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.7rem;
+}
+
+h2 {
+  font-size: 1.55rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  margin-top: 4rem;
+  margin-bottom: 0.8rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--rule);
+  scroll-margin-top: 1rem;
+}
+
+h2 .num {
+  font-family: var(--font-mono);
+  font-size: 0.7em;
+  color: var(--ink-3);
+  font-weight: 500;
+  margin-right: 0.6em;
+}
+
+h3 {
+  font-size: 1.18rem;
+  font-weight: 600;
+  margin-top: 2.2rem;
+  margin-bottom: 0.5rem;
+  scroll-margin-top: 1rem;
+}
+
+h3 .num {
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  color: var(--ink-3);
+  font-weight: 500;
+  margin-right: 0.5em;
+}
+
+h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.4rem;
+  color: var(--ink);
+}
+
+h4 .num {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--ink-3);
+  font-weight: 500;
+  margin-right: 0.5em;
+}
+
+p {
+  margin-bottom: 0.85rem;
+  color: var(--ink-2);
+}
+
+p strong, li strong, td strong { color: var(--ink); font-weight: 600; }
+
+a {
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-2);
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  color: var(--link-hover);
+  text-decoration-color: currentColor;
+}
+
+ul, ol {
+  margin-left: 1.4rem;
+  margin-bottom: 0.85rem;
+  color: var(--ink-2);
+}
+
+li { margin-bottom: 0.25rem; }
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--bg-code);
+  padding: 0.08em 0.35em;
+  border-radius: 2px;
+  color: var(--ink);
+}
+
+pre {
+  background: var(--bg-code);
+  border: 1px solid var(--rule);
+  padding: 0.9rem 1.1rem;
+  border-radius: 3px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
+  margin: 0.75rem 0 1.2rem;
+  position: relative;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+pre[data-lang]::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--rule);
+  color: var(--ink-3);
+  padding: 0.15em 0.6em;
+  border-bottom-left-radius: 3px;
+}
+
+/* tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0 1.5rem;
+  font-size: 14px;
+}
+
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+th {
+  background: var(--bg-soft);
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px solid var(--rule-2);
+  font-size: 13px;
+}
+
+td { color: var(--ink-2); }
+
+td code, th code { font-size: 12.5px; }
+
+/* callouts */
+.callout {
+  background: var(--bg-callout);
+  border-left: 3px solid var(--accent);
+  padding: 0.85rem 1.1rem 0.85rem 1rem;
+  margin: 1rem 0 1.4rem;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.callout strong:first-child {
+  display: inline-block;
+  margin-right: 0.4em;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.callout.warn {
+  background: var(--bg-warn);
+  border-left-color: var(--warn);
+}
+.callout.warn strong:first-child { color: var(--warn); }
+
+.callout.note {
+  background: var(--bg-soft);
+  border-left-color: var(--ink-3);
+}
+.callout.note strong:first-child { color: var(--ink-3); }
+
+/* example blocks */
+.example {
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  margin: 1.5rem 0 2.5rem;
+  background: var(--bg);
+}
+
+.example-head {
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--rule);
+  padding: 0.7rem 1.1rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+}
+
+.example-head .label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.example-head .title {
+  font-weight: 600;
+  font-size: 14.5px;
+  color: var(--ink);
+}
+
+.example-body {
+  padding: 1.2rem 1.4rem 1rem;
+}
+
+.example-body p:last-child { margin-bottom: 0; }
+
+.step {
+  border-left: 2px solid var(--rule-2);
+  padding-left: 1.2rem;
+  margin: 1.4rem 0;
+  position: relative;
+}
+
+.step::before {
+  content: counter(step-counter);
+  counter-increment: step-counter;
+  position: absolute;
+  left: -13px;
+  top: -2px;
+  width: 24px;
+  height: 24px;
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.example-body { counter-reset: step-counter; }
+
+.step-title {
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.step-meta {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.02em;
+}
+
+/* tag pills */
+.tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.16em 0.55em;
+  border: 1px solid var(--rule-2);
+  border-radius: 2px;
+  color: var(--ink-3);
+  vertical-align: 1px;
+  margin-right: 0.4em;
+  background: var(--bg);
+}
+
+.tag.ai { color: var(--accent); border-color: var(--accent); }
+.tag.human { color: var(--warn); border-color: var(--warn); }
+.tag.semi { color: var(--link); border-color: var(--link); }
+.tag.good { color: var(--good); border-color: var(--good); }
+
+/* command spec block */
+.cmd-spec {
+  background: var(--bg-soft);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 1rem 1.2rem;
+  margin: 1rem 0 1.5rem;
+  font-size: 13.5px;
+}
+
+.cmd-spec dl {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 0.4rem 1rem;
+  align-items: baseline;
+}
+
+.cmd-spec dt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: right;
+}
+
+.cmd-spec dd {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.cmd-spec dd.prose {
+  font-family: var(--font-sans);
+  color: var(--ink-2);
+}
+
+/* horizontal rule for section breaks */
+hr {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: 2.5rem 0;
+}
+
+/* lede paragraph */
+.lede {
+  font-size: 1.05rem;
+  color: var(--ink-2);
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+}
+
+/* anchor links */
+.anchor {
+  color: var(--ink-4);
+  text-decoration: none;
+  margin-left: 0.5em;
+  font-weight: 400;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+h2:hover .anchor, h3:hover .anchor, h4:hover .anchor {
+  opacity: 1;
+}
+
+/* footer */
+.doc-foot {
+  margin-top: 5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  letter-spacing: 0.05em;
+}
+
+/* subtle scrollbar */
+.toc::-webkit-scrollbar { width: 6px; }
+.toc::-webkit-scrollbar-track { background: transparent; }
+.toc::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+
+/* ─────────────────────────── APP BAR + TABS ─────────────────────────── */
+.app-bar {
+  display: flex;
+  align-items: center;
+  padding: 0.65rem clamp(1.25rem, 3vw, 2.5rem);
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg);
+  gap: 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 110;
+}
+.app-bar-title { font-weight: 600; font-size: 13.5px; color: var(--ink); }
+.app-bar-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+}
+.incident-id {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.incident-id input {
+  border: 1px solid var(--rule-2);
+  border-radius: 3px;
+  padding: 0.25rem 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  width: 200px;
+  color: var(--ink);
+  background: var(--bg);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.incident-id input:focus { outline: none; border-color: var(--link); }
+
+.tabs {
+  position: sticky;
+  top: 41px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
+  z-index: 100;
+  display: flex;
+  gap: 0;
+  padding: 0 clamp(1.25rem, 3vw, 2.5rem);
+  overflow-x: auto;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 0.85rem 1.3rem;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  position: relative;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+}
+.tab-btn:hover { color: var(--ink); background: var(--bg-soft); }
+.tab-btn.active {
+  color: var(--link);
+  border-bottom-color: var(--link);
+  font-weight: 600;
+}
+.tab-btn .badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-left: 0.4em;
+  vertical-align: 1px;
+}
+
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* the spec tab keeps its 2-col layout, but adjust sticky offset */
+.tab-pane[data-tab-content="spec"] aside.toc { top: 82px; height: calc(100vh - 82px); }
+
+/* ─────────────────────────── FORM PANES ─────────────────────────── */
+.form-pane {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 2.2rem clamp(1.25rem, 4vw, 3.5rem) 5rem;
+}
+.form-header {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 1.3rem;
+  margin-bottom: 1.8rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.form-title {
+  font-size: 1.55rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin-bottom: 0.3rem;
+}
+.form-sub {
+  color: var(--ink-3);
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.form-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.btn {
+  background: var(--bg-soft);
+  border: 1px solid var(--rule-2);
+  padding: 0.45rem 0.95rem;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn:hover { background: var(--bg); border-color: var(--ink-3); }
+.btn-primary { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.btn-primary:hover { background: var(--ink-2); border-color: var(--ink-2); }
+.btn-warn { color: var(--warn); border-color: var(--rule-2); }
+.btn-warn:hover { background: var(--bg-warn); border-color: var(--warn); }
+
+.field-group {
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  margin-bottom: 1.3rem;
+}
+.field-group-head {
+  padding: 0.75rem 1.1rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bg-soft);
+  font-weight: 600;
+  font-size: 13.5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.field-group-head .meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.field-group-body { padding: 1.1rem 1.3rem; }
+
+.field { margin-bottom: 0.85rem; }
+.field:last-child { margin-bottom: 0; }
+.field label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  margin-bottom: 0.3rem;
+}
+.field label .req { color: var(--warn); margin-left: 0.3em; }
+.field label .hint {
+  color: var(--ink-3);
+  font-weight: 400;
+  font-size: 11.5px;
+  margin-left: 0.5em;
+}
+.field input[type="text"],
+.field input[type="datetime-local"],
+.field input[type="time"],
+.field input[type="number"],
+.field textarea,
+.field select {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--rule-2);
+  border-radius: 3px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.field input:focus, .field textarea:focus, .field select:focus {
+  outline: none;
+  border-color: var(--link);
+  box-shadow: 0 0 0 2px rgba(31, 78, 140, 0.12);
+}
+.field textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+
+.field-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.32rem 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+  line-height: 1.5;
+}
+.field-check input[type="checkbox"],
+.field-check input[type="radio"] { margin-top: 0.25rem; flex-shrink: 0; }
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+}
+.field-row-3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 600px) {
+  .field-row, .field-row-3 { grid-template-columns: 1fr; }
+}
+
+/* Pattern selector */
+.pattern-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.5rem;
+  margin: 0.4rem 0;
+}
+.pattern-card {
+  border: 1px solid var(--rule-2);
+  padding: 0.7rem 0.95rem;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  background: var(--bg);
+}
+.pattern-card:hover { background: var(--bg-soft); }
+.pattern-card.selected {
+  border-color: var(--link);
+  background: var(--bg-soft);
+  box-shadow: inset 0 0 0 1px var(--link);
+}
+.pattern-card .key {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--link);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.pattern-card .name { font-weight: 600; font-size: 13.5px; margin: 0.18rem 0; }
+.pattern-card .desc { font-size: 11.5px; color: var(--ink-3); line-height: 1.4; }
+
+/* Output panel (slides up from bottom-right) */
+.output-panel {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  width: 540px;
+  max-width: 100vw;
+  height: 70vh;
+  background: var(--bg);
+  border-left: 1px solid var(--rule);
+  border-top: 1px solid var(--rule);
+  box-shadow: -8px 0 24px -8px rgba(0,0,0,0.1);
+  z-index: 200;
+  display: none;
+  flex-direction: column;
+}
+.output-panel.open { display: flex; }
+.output-head {
+  padding: 0.7rem 1.1rem;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-soft);
+  gap: 0.5rem;
+}
+.output-head h3 { margin: 0; font-size: 13.5px; font-weight: 600; }
+.output-body { flex: 1; overflow-y: auto; padding: 1rem 1.2rem; }
+.output-body pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* Phase progress (checklist tab) */
+.phase-block {
+  margin-bottom: 1.1rem;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.phase-head {
+  padding: 0.75rem 1.1rem;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 1rem;
+  align-items: center;
+}
+.phase-head .phase-num {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+.phase-head h4 { margin: 0; font-size: 14px; font-weight: 600; }
+.phase-head .progress-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.phase-head .progress-bar {
+  width: 70px;
+  height: 4px;
+  background: var(--rule);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.phase-head .progress-bar-fill {
+  height: 100%;
+  background: var(--link);
+  width: 0;
+  transition: width 0.3s, background 0.3s;
+}
+.phase-head.complete .progress-bar-fill { background: var(--good); }
+.phase-head.complete h4 { color: var(--good); }
+.phase-body { padding: 0.85rem 1.2rem; }
+
+.overall-progress {
+  background: var(--bg-soft);
+  border: 1px solid var(--rule);
+  padding: 0.85rem 1.1rem;
+  border-radius: 3px;
+  margin-bottom: 1.3rem;
+}
+.overall-progress-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 13px;
+}
+.overall-progress-row strong { font-weight: 600; }
+.overall-progress-row .pct {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.overall-progress-bar {
+  height: 6px;
+  background: var(--rule);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.overall-progress-bar > div {
+  height: 100%;
+  background: var(--link);
+  width: 0;
+  transition: width 0.3s, background 0.3s;
+}
+</style>
+</head>
+
+<body>
+
+<!-- ─────────────── APP BAR ─────────────── -->
+<header class="app-bar">
+  <div class="app-bar-title">白浜 AI ログ分析パイプライン</div>
+  <div class="app-bar-meta">v1.0 · 2026-05-03</div>
+  <div class="incident-id">
+    <label for="incident-id-input">事案ID</label>
+    <input id="incident-id-input" type="text" placeholder="INC-20260505-001" value="default">
+  </div>
+</header>
+
+<!-- ─────────────── TABS ─────────────── -->
+<nav class="tabs" role="tablist">
+  <button class="tab-btn active" data-tab="spec" role="tab">仕様書 <span class="badge">spec</span></button>
+  <button class="tab-btn" data-tab="intake" role="tab">受電シート <span class="badge">01</span></button>
+  <button class="tab-btn" data-tab="handoff" role="tab">引き継ぎ <span class="badge">02</span></button>
+  <button class="tab-btn" data-tab="review" role="tab">判定 <span class="badge">review</span></button>
+  <button class="tab-btn" data-tab="checklist" role="tab">進捗チェック <span class="badge">05</span></button>
+</nav>
+
+<!-- ─────────────── TAB: SPEC ─────────────── -->
+<section data-tab-content="spec" class="tab-pane active">
+<div class="page">
+
+<!-- ─────────────────────── TOC ─────────────────────── -->
+<aside class="toc">
+  <div class="toc-head">Contents</div>
+
+  <div class="toc-section">
+    <div class="toc-section-title">§ 1 はじめに</div>
+    <ul>
+      <li><a href="#s11">1.1 このドキュメント</a></li>
+      <li><a href="#s12">1.2 大会の前提</a></li>
+      <li><a href="#s13">1.3 用語</a></li>
+    </ul>
+  </div>
+
+  <div class="toc-section">
+    <div class="toc-section-title">§ 2 アーキテクチャ</div>
+    <ul>
+      <li><a href="#s21">2.1 4 層 + 物理ゲート</a></li>
+      <li><a href="#s22">2.2 JPCERT 決定木</a></li>
+      <li><a href="#s22b">2.2b 時間軸データフロー</a></li>
+      <li><a href="#s23">2.3 設計判断</a></li>
+    </ul>
+  </div>
+
+  <div class="toc-section">
+    <div class="toc-section-title">§ 3 コマンドリファレンス</div>
+    <ul>
+      <li><a href="#cmd-incident">3.1 /incident</a></li>
+      <li><a href="#cmd-check">3.2 /check:*</a></li>
+      <li><a href="#cmd-scenario">3.3 /scenario:*</a></li>
+      <li><a href="#cmd-playbook">3.4 /playbook:*</a></li>
+      <li><a href="#cmd-report">3.5 /report</a></li>
+      <li><a href="#cmd-ticket">3.6 /ticket</a></li>
+    </ul>
+  </div>
+
+  <div class="toc-section">
+    <div class="toc-section-title">§ 4 ワークドエグザンプル</div>
+    <ul>
+      <li><a href="#ex-a">4.A WP/IMAP ブルート</a></li>
+      <li><a href="#ex-b">4.B HTTP flood DDoS</a></li>
+      <li><a href="#ex-c">4.C メール大量送信</a></li>
+      <li><a href="#ex-d">4.D DNS 改ざん疑い</a></li>
+    </ul>
+  </div>
+
+  <div class="toc-section">
+    <div class="toc-section-title">§ 5 リファレンス</div>
+    <ul>
+      <li><a href="#s51">5.1 ファイル構成</a></li>
+      <li><a href="#s52">5.2 pattern_tag 一覧</a></li>
+      <li><a href="#s53">5.3 環境変数</a></li>
+      <li><a href="#s54">5.4 settings.json</a></li>
+    </ul>
+  </div>
+
+  <div class="toc-section">
+    <div class="toc-section-title">§ 6 運用</div>
+    <ul>
+      <li><a href="#s60">6.0 試験前事前準備</a></li>
+      <li><a href="#s61">6.1 起動前チェック</a></li>
+      <li><a href="#s62">6.2 トラブルシューティング</a></li>
+      <li><a href="#s63">6.3 やらないこと</a></li>
+    </ul>
+  </div>
+</aside>
+
+
+<!-- ─────────────────────── MAIN ─────────────────────── -->
+<main>
+
+<div class="doc-meta">
+  <span>Whiskey / Booth 1 · com1.local</span>
+  <span>Version 1.0 · 2026-05-03</span>
+  <span>Target: SCCS 2026 二次予選 (2026-05-05)</span>
+</div>
+
+<h1>白浜 AI ログ分析パイプライン<br>システム仕様書</h1>
+
+<p class="lede">
+電話受電起点のインシデント対応を Claude Code の slash command で半自動化する。
+本書は 8 つのコマンドの仕様、4 層アーキテクチャの内部、典型 4 シナリオでの操作手順を、
+コードと実出力ベースで記述した運用者向けリファレンス。
+</p>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     § 1 はじめに
+     ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="s1"><span class="num">§ 1</span>はじめに</h2>
+
+<h3 id="s11"><span class="num">1.1</span>このドキュメントについて<a href="#s11" class="anchor">#</a></h3>
+
+<p>本書は <strong>運用者 (技術調査係 / 指揮係) が実際の試合中に参照するための仕様書</strong>。設計思想や 30 秒ピッチは <a href="21_システム解説.md">21_システム解説.md</a> を参照。本書はそれより 1 段詳しく、<strong>「このコマンドを叩くと何が走り、何が出力され、次に何をすべきか」</strong> を 1 ページで答える形にしてある。</p>
+
+<p>各コマンド節は (a) 仕様 → (b) 内部処理 → (c) 出力形式 → (d) 次の手 の 4 ブロック構成。§4 のワークドエグザンプルで実際の通報シナリオを最初から最後まで追跡する。</p>
+
+<h3 id="s12"><span class="num">1.2</span>大会の前提<a href="#s12" class="anchor">#</a></h3>
+
+<table>
+<thead><tr><th>項目</th><th>値</th></tr></thead>
+<tbody>
+<tr><td>大会</td><td>情報危機管理コンテスト 2026 二次予選 (SCCS)</td></tr>
+<tr><td>チーム</td><td>Whiskey (Booth 1)</td></tr>
+<tr><td>本番日時</td><td>2026-05-05</td></tr>
+<tr><td>時間構造</td><td>接続確認 30 分 → 演習本番 90 分 → チケット作成 30 分</td></tr>
+<tr><td>評価軸</td><td>技術的解決力 / 顧客対応力 / チケット記載の正確さ・網羅性</td></tr>
+<tr><td>守備対象</td><td>victor (10.1.1.2 / Rocky Linux / Web/Mail/DHCP) + bravo (10.1.1.1 / FreeBSD / DNS/掲示板)</td></tr>
+<tr><td>触禁機器</td><td>CIC DNS 10.1.130.1 / VPN 入口 133.42.49.151</td></tr>
+<tr><td>報告先</td><td>PukiWiki <code>http://133.42.49.140/trouble_ticket_137/</code> (whiskey / E5mA9cF3)</td></tr>
+</tbody>
+</table>
+
+<div class="callout note">
+<strong>note</strong>本書中の「本番」は 2026-05-05 SCCS、「テスト」は過去の研修ログ、「デモ」は OCI 上の検証環境を指す。
+</div>
+
+<h3 id="s13"><span class="num">1.3</span>用語<a href="#s13" class="anchor">#</a></h3>
+
+<table>
+<thead><tr><th>用語</th><th>意味</th></tr></thead>
+<tbody>
+<tr><td>analyzer</td><td><code>agent/analyzer.py</code>。ログを Signal[] に変換するルールベース観測層。</td></tr>
+<tr><td>Signal</td><td>analyzer が検出した攻撃 1 件。category / severity / pattern_tag / evidence を持つ。</td></tr>
+<tr><td>pattern_tag</td><td>Signal の細分類タグ。例 <code>webapp/auth-bruteforce</code>、<code>mail/sasl-failed</code>。</td></tr>
+<tr><td>PatchProposal</td><td>Mock / Claude が生成する対策提案 1 件。action / target / match_value / confidence を持つ。</td></tr>
+<tr><td>触らない哲学</td><td>共有 demo 環境の脆弱性を勝手に塞がない方針。出題シナリオを破壊しない。</td></tr>
+<tr><td>既侵害前提</td><td>「未知の侵害が初めて起きた」ではなく「既に潜伏していた攻撃者が動き出した」前提で処理する考え方。</td></tr>
+<tr><td>Mock backend</td><td>LLM 不要の決定論的判断器。whitelist filter + known-bad 即 block。</td></tr>
+<tr><td>grey signal</td><td>Mock のハンドラ範囲外で Claude API に流されるシグナル。</td></tr>
+</tbody>
+</table>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     § 2 アーキテクチャ
+     ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="s2"><span class="num">§ 2</span>アーキテクチャ</h2>
+
+<h3 id="s21"><span class="num">2.1</span>4 層 + 物理ゲート<a href="#s21" class="anchor">#</a></h3>
+
+<p>システムは 4 つの責務分離された層 + 1 つの物理ゲートで構成される。下層に行くほど LLM 依存度が高く、最下層の物理ゲートが「LLM が暴走しても実機に届かない」を保証する。</p>
+
+<pre data-lang="diagram">/var/log/* (httpd / secure / maillog / named)
+        │  ssh manage@10.1.1.{1,2} 'tail ...'
+        ▼
+┌─────────────────────────────────────────────────────┐
+│ ① 観測層  agent/analyzer.py                         │
+│   41 pattern / 6 カテゴリ汎用検出 / 決定論的         │
+└─────────────────────────────────────────────────────┘
+        │  list[Signal]
+        ▼
+┌─────────────────────────────────────────────────────┐
+│ ② 判断層 1  agent/backends/mock_backend.py           │
+│   whitelist filter + known-bad 即 block / 決定論的    │
+└─────────────────────────────────────────────────────┘
+        │  Mock 知識外 = grey signal のみ
+        ▼
+┌─────────────────────────────────────────────────────┐
+│ ③ 判断層 2  agent/backends/claude_backend.py         │
+│   grey の意味推定 + 顧客向け文面生成 / Claude API     │
+└─────────────────────────────────────────────────────┘
+        │  list[PatchProposal]
+        ▼
+┌─────────────────────────────────────────────────────┐
+│ ④ 検証層  agent/validator.py                         │
+│   ReDoS / 壊れた regex を all-or-nothing 棄却          │
+└─────────────────────────────────────────────────────┘
+        │  健全な PatchProposal[]
+        ▼
+┌─────────────────────────────────────────────────────┐
+│ ⑤ 物理ゲート  .claude/settings.json                  │
+│   deny: 67 / ask: 37 / allow: 64                      │
+└─────────────────────────────────────────────────────┘
+        │
+   ┌────┼────┐
+   ▼    ▼    ▼
+  拒否  確認 即実行
+  (nsupdate (iptables  (ssh / dig
+   systemctl) -j DROP)  / tail / ls)</pre>
+
+<h3 id="s22"><span class="num">2.2</span>JPCERT 決定木<a href="#s22" class="anchor">#</a></h3>
+
+<p>JPCERT インシデントハンドリングは「線形 4 段階」ではなく、各段階に <strong>「対応不要」枝</strong> を持つ決定木。本システムはこの分岐をすべて支援する。</p>
+
+<pre data-lang="diagram">[1] 検知 / 連絡受付 — 電話受電 (受電係)
+        │
+        ▼
+[2] トリアージ — 情報収集 + 注意喚起 + 対応要否の一次判定
+    │
+    │ ┌── パターン判定後すぐに log 分析 (/incident) を並行起動 ──┐
+    │ │   電話は続行中、技術調査係が別端末で投入                │
+    │ └─────────────────────────────────────────────────────────┘
+    │
+    ├── 対応不要 ─→ 関係者に根拠回答 + 必要なら注意喚起 ─→ 終了
+    │
+    └── 対応必要
+        ▼
+[3] インシデントレスポンス — 事象分析
+    │
+    ├── 対応すべきでないと判明 ─→ 報告者に詳細回答 ─→ 終了
+    │
+    └── 対応すべき
+        ▼
+    対応計画策定 ─→ 対応実施 ─→ 解決確認
+    (技術困難なら経営層連携、可能なら IT 部署連携)
+        │
+        │ 解決していない → 再度 [3] へループ
+        ▼
+[4] 報告 / 情報公開 — 最終回答 + 必要に応じてプレスリリース</pre>
+
+<div class="callout"><strong>tip</strong>本システムでこの決定木のどこにいるかを常に把握するため、<a href="#" onclick="activateTab('review'); return false;">判定 タブ</a> で「対応不要 / 情報提供のみ / 対応必要 / 追加情報待ち」を明示的にラジオ選択する設計。</div>
+
+<h3 id="s22b"><span class="num">2.2b</span>時間軸データフロー（並行処理あり）<a href="#s22b" class="anchor">#</a></h3>
+
+<p>受電フェーズと log 分析フェーズは <strong>並行</strong> 実行される。電話応対係が後半の聞き取りをしている間に、技術調査係は <code>/incident</code> を起動できる (パターン判定 + 時間窓 + 影響ホストが確定し次第)。</p>
+
+<table>
+<thead><tr><th>T+</th><th>主体</th><th>処理</th><th>備考</th></tr></thead>
+<tbody>
+<tr><td>0:00</td><td>受電係</td><td>受電 / 受電シート 共通冒頭 3 項目を取得</td><td><span class="tag human">人間</span></td></tr>
+<tr><td>0:01</td><td>受電係</td><td>パターン (A/B/C/D) 判定 + 時間窓・影響ホストの聞き取り開始</td><td><span class="tag human">人間</span></td></tr>
+<tr><td>0:02</td><td colspan="3" style="background:var(--bg-callout);"><strong>【分岐 — ここから 並行】</strong></td></tr>
+<tr><td>0:02–0:08</td><td>受電係</td><td>残りの聞き取り (パターン別質問)、依頼事項の伝達</td><td><span class="tag human">人間</span> 続行</td></tr>
+<tr><td>0:02</td><td>技術調査係</td><td><code>/incident &lt;時間窓&gt; &lt;ホスト&gt;</code> 投入</td><td><span class="tag ai">AI</span> 並行</td></tr>
+<tr><td>0:03–0:10</td><td>Claude</td><td>§1〜§7 連続実行 (ログ取得 → analyzer → Mock+Claude → ルーティング → SOC summary → 顧客追加質問)</td><td><span class="tag ai">AI</span></td></tr>
+<tr><td>0:10</td><td colspan="3" style="background:var(--bg-callout);"><strong>【合流 — レビュー / 事象判定】</strong></td></tr>
+<tr><td>0:10–0:13</td><td>指揮 + 技術 + 記録</td><td>受電内容と analyzer 結果を突合。<a href="#" onclick="activateTab('review'); return false;">判定タブ</a> で 4 択判定:</td><td><span class="tag semi">合議</span></td></tr>
+<tr><td colspan="4" style="padding-left:3rem;">
+  ・<strong>対応不要</strong> → 受電係から「現時点では弊社対応不要」を回答 → <strong>終了</strong><br>
+  ・<strong>情報提供のみ</strong> → 注意喚起テキストを生成 → 関係者に通知 → <strong>終了</strong><br>
+  ・<strong>追加情報待ち</strong> → 📞 顧客追加質問リストを電話実行 → T+0:10 にループバック<br>
+  ・<strong>対応必要</strong> → ↓ レスポンス継続
+</td></tr>
+<tr><td>0:13</td><td>指揮係</td><td>レビュー結果を 02 引き継ぎテンプレに転記、技術調査係に依頼</td><td><span class="tag human">人間</span></td></tr>
+<tr><td>0:15</td><td>技術調査係</td><td><code>/check:*</code> + <code>/playbook:*</code> 投入 → 対策案提示</td><td><span class="tag ai">AI</span></td></tr>
+<tr><td>0:18</td><td>指揮係</td><td>Go / NoGo 判定 (リーダー承認)</td><td><span class="tag human">人間</span></td></tr>
+<tr><td>0:20</td><td>技術調査係</td><td>承認済みコマンドを実行 (<code>settings.json</code> deny/ask 物理ゲート)</td><td><span class="tag semi">AI×Human</span></td></tr>
+<tr><td>0:23</td><td>技術調査係</td><td>解決確認 (ログ・サービス挙動)。未解決なら T+0:15 にループ</td><td><span class="tag ai">AI</span></td></tr>
+<tr><td>0:25</td><td>技術調査係</td><td><code>/report</code> で完了報告ドラフト生成</td><td><span class="tag ai">AI</span></td></tr>
+<tr><td>0:28</td><td>受電係</td><td>顧客への折り返し電話 (完了 / 一次対応完了 を明示)</td><td><span class="tag human">人間</span></td></tr>
+<tr><td>+90</td><td>技術調査係</td><td><code>/ticket</code> で PukiWiki マークアップ生成</td><td><span class="tag ai">AI</span></td></tr>
+<tr><td>+95</td><td>指揮係</td><td>PukiWiki に手動投稿</td><td><span class="tag human">人間</span></td></tr>
+</tbody>
+</table>
+
+<div class="callout note"><strong>note</strong>T+0:10 のレビュー点は本システムの <strong>核</strong>。ここで判定を間違えると、対応不要なのに動いて時間を消費する / 逆に対応必要なのに「不要」と回答して評価減点 のどちらかが起きる。<a href="#" onclick="activateTab('review'); return false;">判定タブ</a> で 4 択を明示的に記録。</div>
+
+<h3 id="s23"><span class="num">2.3</span>設計判断<a href="#s23" class="anchor">#</a></h3>
+
+<h4>Q1. なぜ 60 項目を全部 pattern 化しなかったか</h4>
+<p>過去環境固有の CVE (rainloop 1.12.0 等) に過学習すると、本番で別 CVE が出たとき検知ゼロになる。<strong>6 カテゴリに圧縮した汎用 pattern</strong> で「rainloop でも roundcube でも捕捉する」形にした。</p>
+
+<h4>Q2. なぜ Mock + Claude の二段か</h4>
+<p>Mock 単独では未知攻撃を取りこぼす。Claude 単独では API コストとレイテンシで 30 分制約を破る。<strong>Mock filter で 8 割減 → grey だけ Claude</strong> で速度とコストを両立。</p>
+
+<h4>Q3. なぜ deny / ask / allow の 3 層か</h4>
+<p>「絶対実行しない」「人間判断要」「即実行」の 3 段階で粒度を分けることで、安全と速度を両立。read-only な dig / tail を毎回確認していては時間が足りない。一方で <code>iptables -j DROP</code> を allow にしては事故る。</p>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     § 3 コマンドリファレンス
+     ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="s3"><span class="num">§ 3</span>コマンドリファレンス</h2>
+
+<p class="lede">
+8 系統の slash command。<code>/incident</code> がハブ、その他はスポーク。
+それぞれ <code>.claude/commands/</code> 配下の Markdown ファイルとして実装されており、Claude Code が読んで実行する。
+</p>
+
+
+<!-- ─────── /incident ─────── -->
+
+<h3 id="cmd-incident"><span class="num">3.1</span>/incident<a href="#cmd-incident" class="anchor">#</a></h3>
+
+<p>受電起点のエントリ。ログ取得から SOC summary・📞 顧客追加質問まで連続自動実行。<strong>1 件のインシデントに 1 回呼ぶ</strong>のが基本運用。</p>
+
+<div class="cmd-spec">
+<dl>
+<dt>SYNOPSIS</dt><dd>/incident &lt;時間窓&gt; &lt;ホスト&gt;</dd>
+<dt>EXAMPLE</dt><dd>/incident 13:00-13:30 victor</dd>
+<dt>FILE</dt><dd>.claude/commands/incident.md</dd>
+<dt>PHASE</dt><dd class="prose">Phase 02 トリアージ (JPCERT 段階 2.2)</dd>
+<dt>ACTOR</dt><dd class="prose"><span class="tag ai">AI Auto</span> 技術調査係が 1 回投入、Claude が §1〜§7 を連続実行</dd>
+<dt>WHEN</dt><dd class="prose">電話受電後、01 ヒアリングシートで時間窓と影響ホストが確定したら即叩く</dd>
+</dl>
+</div>
+
+<h4>3.1.1 引数</h4>
+<table>
+<thead><tr><th>位置</th><th>名前</th><th>形式</th><th>説明</th></tr></thead>
+<tbody>
+<tr><td>$1</td><td>時間窓</td><td><code>HH:MM-HH:MM</code></td><td>UTC 24h 形式。JST から渡す場合は <strong>必ず -9h</strong> 変換 (例: JST 23:30 → UTC 14:30)。</td></tr>
+<tr><td>$2</td><td>ホスト</td><td><code>victor</code> | <code>bravo</code></td><td>主要嫌疑のヒント。実際は両ホストからログを取る (横展開検出のため)。</td></tr>
+</tbody>
+</table>
+
+<h4>3.1.2 §1 ログ取得 (内部処理)</h4>
+<p>環境変数 <code>SSH_VICTOR</code> / <code>SSH_BRAVO</code> 経由で接続先を切替 (build = OCI alias / production = manage@10.1.1.x)。両ホストから 7 種類のログを <code>/tmp/incident_*.log</code> へ並行取得。</p>
+
+<pre data-lang="bash">SSH_VICTOR="${SSH_VICTOR:-manage@10.1.1.2}"
+SSH_BRAVO="${SSH_BRAVO:-manage@10.1.1.1}"
+
+# victor (Web/Mail/DHCP)
+ssh -o ConnectTimeout=5 "$SSH_VICTOR" 'sudo tail -2000 /var/log/httpd/access_log' \
+    > /tmp/incident_access.log
+ssh -o ConnectTimeout=5 "$SSH_VICTOR" 'sudo tail -1000 /var/log/secure'  \
+    > /tmp/incident_secure.log
+ssh -o ConnectTimeout=5 "$SSH_VICTOR" 'sudo tail -1000 /var/log/maillog' \
+    > /tmp/incident_maillog.log
+# (httpd error_log / messages も同様に取得)
+
+# bravo (DNS/掲示板)
+ssh -o ConnectTimeout=5 "$SSH_BRAVO"  'sudo tail -2000 /var/log/named.log' \
+    > /tmp/incident_named.log
+# (auth.log / maillog も取得)</pre>
+
+<div class="callout"><strong>tip</strong>接続失敗しても <code>|| true</code> で続行する設計。1 ホストが落ちていても他のログから判定する。</div>
+
+<h4>3.1.3 §2 時間窓フィルタ + JSONL 化</h4>
+
+<pre data-lang="bash">WINDOW="$1"
+START_TIME="${WINDOW%-*}:00"
+END_TIME="${WINDOW#*-}:00"
+TODAY="$(date -u +%Y-%m-%d)"
+START="${TODAY}T${START_TIME}+00:00"
+END="${TODAY}T${END_TIME}+00:00"
+
+python scripts/preprocess/parse_clf.py /tmp/incident_access.log \
+  | jq --arg s "$START" --arg e "$END" \
+       'select(.timestamp >= $s and .timestamp <= $e)' \
+  > /tmp/access.log</pre>
+
+<div class="callout warn"><strong>重要</strong><code>/tmp/access.log</code> という固定ファイル名にすること。<code>analyzer.run()</code> はこのファイル名のみ拾う。</div>
+
+<h4>3.1.4 §3 analyzer 出力例</h4>
+<pre data-lang="output">─── /incident §3 analyzer ───
+検出シグナル: 5 件
+  [medium  ] mail                 tag=mail/sasl-failed         ip=161.33.12.212
+  [medium  ] mail                 tag=mail/sasl-failed         ip=161.33.12.212
+  [medium  ] mail                 tag=mail/sasl-failed         ip=161.33.12.212
+  [medium  ] mail                 tag=mail/sasl-failed         ip=161.33.12.212
+  [medium  ] mail                 tag=mail/sasl-failed         ip=161.33.12.212</pre>
+
+<h4>3.1.5 §4 判断層出力例</h4>
+<pre data-lang="output">─── /incident §4 判断層 ───
+Mock: 1 / Claude: 2 / 検証通過: 3
+
+[block     ] conf=0.85  rule_id=mail-bf-161-33-12-212
+  target: maillog
+  match : log:contains:'rip=161.33.12.212'
+  理由  : 同一 IP からの IMAP PLAIN brute force 5 件 ...
+
+[rate_limit] conf=0.72  rule_id=imap-rate-...
+  ...</pre>
+
+<h4>3.1.6 §5 ルーティング提示 (例)</h4>
+<p>analyzer の pattern_tag を見て次に叩くべき <code>/check:*</code> と <code>/playbook:*</code> を提示する。例:</p>
+<table>
+<thead><tr><th>検出 pattern_tag</th><th>1 段目: /check</th><th>2 段目: /playbook</th></tr></thead>
+<tbody>
+<tr><td><code>webapp/auth-bruteforce</code></td><td><code>check-wp-xmlrpc-brute</code></td><td><code>wp-tamper</code></td></tr>
+<tr><td><code>mail/sasl-failed</code></td><td><code>check-courier-imap-plain</code> + <code>check-dovecot-passdb-pam</code></td><td><code>phishing</code></td></tr>
+<tr><td><code>dns/unauthorized-update</code></td><td><code>check-bind-allow-update</code></td><td><code>dns-tamper</code></td></tr>
+<tr><td><code>auth/ssh-bruteforce</code></td><td><code>check-known-attacker-ip</code></td><td><code>ransomware</code></td></tr>
+<tr><td>同一 IP burst (tag 不在)</td><td>—</td><td><code>ddos</code></td></tr>
+</tbody>
+</table>
+<p>完全な早見表は <a href="../.claude/commands/incident.md">incident.md §5.2</a> 参照 (約 25 行)。</p>
+
+<h4>3.1.7 §6 SOC summary + §7 📞 顧客追加質問</h4>
+<p>§6 は Claude が状況をまとめた自然文サマリ。§7 は顧客にしか答えられない質問のチェックリスト。例:</p>
+<pre data-lang="output">─── 📞 受電係に依頼: 顧客に確認すべきこと ───
+□ 14:37 UTC (= JST 23:37) 頃、社内から com1.local/wp-admin に
+   アクセスする業務はあったか?
+□ admin / manage アカウントで作業中の社員はいたか?
+□ obuchi 氏は本日出社していたか? (IMAP brute の試行リストに含まれる)
+□ サービス停止許容度: WP 管理画面を一時遮断しても業務影響は?</pre>
+
+<h4>3.1.8 既知の制限</h4>
+<ul>
+<li>analyzer の <code>webapp/auth-bruteforce</code> 集約が wp-login.php POST × 20 を拾えていないケースが報告されている。<a href="#ex-a">§4.A</a> 参照。</li>
+<li>§2 の <code>WINDOW="$1"</code> が ad-hoc bash 経由だと位置引数を受け取れず、Claude が手動で <code>WINDOW="..."</code> 置換する必要あり。</li>
+<li>ログタイムスタンプは UTC 前提。JST から打つ場合は <strong>必ず -9h</strong> 変換。</li>
+</ul>
+
+
+<!-- ─────── /check ─────── -->
+
+<h3 id="cmd-check"><span class="num">3.2</span>/check:*<a href="#cmd-check" class="anchor">#</a></h3>
+
+<p>23 本の脆弱性別ピンポイント検査。<code>/incident §5</code> から自動推奨される。並行起動可。<strong>1 つの脆弱性カテゴリ = 1 つの check</strong> の粒度。</p>
+
+<div class="cmd-spec">
+<dl>
+<dt>SYNOPSIS</dt><dd>/check:&lt;name&gt; [&lt;name2&gt; ...]</dd>
+<dt>EXAMPLE</dt><dd>/check:check-known-attacker-ip /check:check-wp-xmlrpc-brute</dd>
+<dt>FILE</dt><dd>.claude/commands/check/check-*.md</dd>
+<dt>PHASE</dt><dd class="prose">Phase 03 直し方決定の前段</dd>
+<dt>ACTOR</dt><dd class="prose"><span class="tag ai">AI Auto</span> 痕跡確認は完全自動。判定は人間。</dd>
+</dl>
+</div>
+
+<h4>3.2.1 主な /check (抜粋)</h4>
+<table>
+<thead><tr><th>name</th><th>確認対象</th><th>典型的なトリガー</th></tr></thead>
+<tbody>
+<tr><td><code>check-known-attacker-ip</code></td><td>既侵害履歴 IP (10.1.129.10) からの再ログイン痕跡</td><td>常に最初に並行起動</td></tr>
+<tr><td><code>check-syslog-udp-injection</code></td><td>514/UDP への偽ログ注入痕跡</td><td>常に最初に並行起動</td></tr>
+<tr><td><code>check-wp-xmlrpc-brute</code></td><td>wp-login / xmlrpc ブルート</td><td><code>webapp/auth-bruteforce</code></td></tr>
+<tr><td><code>check-wp-config-leak</code></td><td>wp-config.php の Web 経由読取</td><td><code>webapp/dotfile-access</code> + path に <code>wp-config</code></td></tr>
+<tr><td><code>check-courier-imap-plain</code></td><td>143/110 平文 IMAP/POP の認証情報漏洩</td><td><code>mail/sasl-failed</code></td></tr>
+<tr><td><code>check-dovecot-passdb-pam</code></td><td>Dovecot PAM 経由の全システムユーザログイン可</td><td><code>mail/sasl-failed</code></td></tr>
+<tr><td><code>check-bind-axfr</code></td><td>BIND ゾーン転送試行</td><td><code>dns/axfr-attempt</code></td></tr>
+<tr><td><code>check-bind-allow-update</code></td><td>nsupdate 経由 DNS 改ざん痕跡</td><td><code>dns/unauthorized-update</code></td></tr>
+<tr><td><code>check-toor-uid0</code></td><td>bravo の UID0 重複 backdoor</td><td>auth 系シグナル発火時</td></tr>
+<tr><td><code>check-obuchi-777-hijack</code></td><td>victor /home/obuchi 777 経由 SSH 乗っ取り痕跡</td><td><code>auth/ssh-failed user=obuchi</code></td></tr>
+<tr><td><code>check-pkexec-pwnkit</code></td><td>PwnKit (CVE-2021-4034) ローカル権限昇格</td><td><code>privesc/pkexec-attempt</code></td></tr>
+<tr><td><code>check-rogue-dhcp</code></td><td>rogue DHCP / MITM</td><td>受電「内部から偽サイトに飛ばされた」</td></tr>
+</tbody>
+</table>
+<p>全 23 本の一覧は <code>.claude/commands/check/</code> 直下を参照。</p>
+
+<h4>3.2.2 出力形式</h4>
+<p>各 check は判定 (🚨 確定 / ⚠️ 疑い / ✅ クリア) + 主要根拠 + 副次発見の 3 部構成。例:</p>
+<pre data-lang="output">═══ /check:check-courier-imap-plain ═══
+判定: 🚨 確定 (脆弱性露出)
+主要根拠:
+  - method=PLAIN 試行 5 件 (admin/manage/root/obuchi/test)
+  - bravo dovecot: disable_plaintext_auth = no + ssl = no + 143/110 listen ON
+  - 送信パスワードは MITM で盗聴可能
+副次発見:
+  - obuchi が試行ユーザに含まれる → 既侵害アカウント情報を保有する攻撃者の疑い</pre>
+
+
+<!-- ─────── /scenario ─────── -->
+
+<h3 id="cmd-scenario"><span class="num">3.3</span>/scenario:*<a href="#cmd-scenario" class="anchor">#</a></h3>
+
+<p>複数 pattern_tag が同時発火しキルチェーン疑いになった場合、個別 check を 1 つずつ叩くより <strong>連鎖一括起動</strong> が効率的。3 つのシナリオを実装。</p>
+
+<table>
+<thead><tr><th>name</th><th>同時発火パターン</th><th>想定キルチェーン</th></tr></thead>
+<tbody>
+<tr><td><code>killchain-recon-rce-dbexfil</code></td><td><code>webapp/scanner-ua</code> + <code>webapp/dotfile-access</code> + <code>path_traversal/cmdi</code></td><td>偵察 → Web RCE → DB 持ち出し</td></tr>
+<tr><td><code>dns-spoof-phish</code></td><td><code>dns/unauthorized-update</code> + (受電「サイト見た目変」) + <code>mail/spf-fail</code></td><td>内部 MITM → DNS 書換 → フィッシング</td></tr>
+<tr><td><code>vpn-uplink-abuse</code></td><td><code>auth/ssh-bruteforce</code> + <code>protocol/telnet-access</code> + <code>privesc/pkexec-attempt</code></td><td>VPN 経路 → 上流信頼悪用 → 権限昇格</td></tr>
+</tbody>
+</table>
+
+
+<!-- ─────── /playbook ─────── -->
+
+<h3 id="cmd-playbook"><span class="num">3.4</span>/playbook:*<a href="#cmd-playbook" class="anchor">#</a></h3>
+
+<p>5 系統の深掘り + 対策提示スキル。<strong>判定 → 封じ込め → 復旧 → 報告</strong> の 4 ステップで構成。すべての対策コマンドは <strong>「リーダー承認後」明記</strong>。</p>
+
+<div class="cmd-spec">
+<dl>
+<dt>SYNOPSIS</dt><dd>/playbook:&lt;name&gt;</dd>
+<dt>EXAMPLE</dt><dd>/playbook:wp-tamper</dd>
+<dt>PHASE</dt><dd class="prose">Phase 03 直し方決定 → Phase 04 対応実施</dd>
+<dt>ACTOR</dt><dd class="prose"><span class="tag semi">AI × Human</span> AI が提案、リーダーが Go/NoGo</dd>
+</dl>
+</div>
+
+<table>
+<thead><tr><th>name</th><th>対象</th><th>主な検出シグナル</th></tr></thead>
+<tbody>
+<tr><td><code>wp-tamper</code></td><td>victor + bravo</td><td>sqli/xss/cmdi/webapp 系、RainLoop CVE</td></tr>
+<tr><td><code>dns-tamper</code></td><td>bravo</td><td>dns/* (nsupdate / AXFR / amplification)</td></tr>
+<tr><td><code>ddos</code></td><td>両機</td><td>HTTP flood / DNS amplification / 同一 IP 多発</td></tr>
+<tr><td><code>phishing</code></td><td>両機</td><td>mail/* (relay / sasl-failed / burst)</td></tr>
+<tr><td><code>ransomware</code></td><td>両機</td><td>privesc/* / persist/* / 不審 mtime</td></tr>
+</tbody>
+</table>
+
+
+<!-- ─────── /report ─────── -->
+
+<h3 id="cmd-report"><span class="num">3.5</span>/report<a href="#cmd-report" class="anchor">#</a></h3>
+
+<p>トリアージ + 対応記録から <strong>顧客向け完了連絡文面</strong> を 5 種類自動生成。一次対応完了 / 完全完了 を自動切替。</p>
+
+<div class="cmd-spec">
+<dl>
+<dt>SYNOPSIS</dt><dd>/report [&lt;triage-report-path&gt;]</dd>
+<dt>DEFAULT</dt><dd>~/Desktop/shirahama_test.md</dd>
+<dt>FILE</dt><dd>.claude/commands/report.md</dd>
+<dt>PHASE</dt><dd class="prose">Phase 05 完了一次連絡</dd>
+<dt>ACTOR</dt><dd class="prose"><span class="tag ai">AI Auto</span> ドラフト生成、送信は人間</dd>
+</dl>
+</div>
+
+<h4>3.5.1 出力するテンプレ</h4>
+<ol>
+<li><strong>顧客担当者向け (電話・短文)</strong> — 技術窓口宛、200 字目安</li>
+<li><strong>顧客経営層向け (電話・要点のみ)</strong> — 300 字、結論→事実→対応→今後</li>
+<li><strong>一般ユーザ向け (電話・わかりやすく)</strong> — 技術用語禁止</li>
+<li><strong>外部第三者通報者向け (電話・簡潔)</strong> — 社内事情の詳細は開示しない</li>
+<li><strong>メール (顧客担当者向け正式記録)</strong> — 後日のエビデンス用</li>
+</ol>
+
+<h4>3.5.2 完了判定チェックリスト</h4>
+<p>送信前に <code>/report</code> が自動チェック:</p>
+<ul>
+<li>直接原因が特定できた</li>
+<li>拡大・再発しない状態 (封じ込め完了)</li>
+<li>影響範囲が確定</li>
+<li>サービスが正常稼働</li>
+<li>残タスクが整理</li>
+<li>追加質問への準備</li>
+<li>記録</li>
+</ul>
+<p>1 つでも ❌ なら <strong>「一次対応完了」モード</strong>に自動切替し、テンプレ 1〜5 ではなく「一次対応完了」テンプレ + 継続中作業リスト + 次回報告時刻提案を出す。</p>
+
+
+<!-- ─────── /ticket ─────── -->
+
+<h3 id="cmd-ticket"><span class="num">3.6</span>/ticket<a href="#cmd-ticket" class="anchor">#</a></h3>
+
+<p>大会最後 30 分のチケット作成フェーズ専用。トリアージ + 対応記録から <strong>PukiWiki マークアップ 1 件</strong>を自動生成。投稿は人間。</p>
+
+<div class="cmd-spec">
+<dl>
+<dt>SYNOPSIS</dt><dd>/ticket [&lt;triage-report-path&gt;]</dd>
+<dt>DEFAULT</dt><dd>~/Desktop/shirahama_test.md</dd>
+<dt>FILE</dt><dd>.claude/commands/ticket.md</dd>
+<dt>PHASE</dt><dd class="prose">Phase 06 チケット作成 (T+90〜+120)</dd>
+<dt>ACTOR</dt><dd class="prose"><span class="tag ai">AI Auto</span> 投稿は人間 (認証情報を Claude に渡さない)</dd>
+</dl>
+</div>
+
+<h4>3.6.1 出力する 5 フィールド</h4>
+<table>
+<thead><tr><th>フィールド</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td>発生時刻</td><td>JST 24h、攻撃開始時刻</td></tr>
+<tr><td>トラブルの内容</td><td>1 段落、技術事実中心、感情語禁止</td></tr>
+<tr><td>原因</td><td><strong>必ずログ行を引用</strong>。脆弱性根本原因を含める</td></tr>
+<tr><td>対処内容</td><td>時系列テーブル、実施者・実施時刻・実施コマンド</td></tr>
+<tr><td>復旧確認</td><td>どのログ/URL/コマンドで「正常状態」を確認したか</td></tr>
+</tbody>
+</table>
+
+<h4>3.6.2 PukiWiki マークアップ規約</h4>
+<table>
+<thead><tr><th>要素</th><th>構文</th></tr></thead>
+<tbody>
+<tr><td>見出し</td><td><code>*</code> <code>**</code> <code>***</code></td></tr>
+<tr><td>リスト</td><td><code>-</code> <code>--</code></td></tr>
+<tr><td>テーブル</td><td><code>|...|...|</code> 末尾 <code>h</code> でヘッダ</td></tr>
+<tr><td>強調</td><td><code>'''bold'''</code> <code>''italic''</code></td></tr>
+<tr><td>コードブロック</td><td>行頭半角スペース 1 個</td></tr>
+<tr><td>目次</td><td><code>#contents</code></td></tr>
+</tbody>
+</table>
+
+<div class="callout warn"><strong>禁則</strong>HTML タグ (<code>&lt;br&gt;</code> 等) と絵文字は使わない (公式記録 + PukiWiki が崩れる)。<code>🚨</code> は <code>[要対応]</code>、<code>✅</code> は <code>[確認済]</code> 等の角括弧テキストに置換。</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     § 4 ワークドエグザンプル
+     ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="s4"><span class="num">§ 4</span>ワークドエグザンプル</h2>
+
+<p class="lede">
+「この通報が来たらどう動くか」の具体例。例 A は実際に <a href="../shirahama_test.md">shirahama_test.md</a> で記録された WP/IMAP brute のケースを 7 ステップで追跡する。例 B〜D は典型シナリオ。
+</p>
+
+
+<!-- ─── Example A ─── -->
+
+<div class="example" id="ex-a">
+<div class="example-head">
+  <span class="label">Example A</span>
+  <span class="title">WordPress + IMAP 同時ブルートフォース (実例)</span>
+</div>
+<div class="example-body">
+
+<p><strong>状況:</strong> 2026-05-03 23:30 JST 頃、定期監視で「victor の wp-login.php への大量 POST」と「bravo dovecot の認証失敗」を同時検知。攻撃元は <code>161.33.12.212</code>。</p>
+
+<div class="step">
+<div class="step-title">受電 / 状況確認</div>
+<div class="step-meta">T+0:00 · 電話応対係 · <span class="tag human">Human</span></div>
+<p>01 ヒアリングシートに記入:</p>
+<ul>
+<li>通報者: 監視システム (or 顧客)</li>
+<li>影響サービス: WordPress + メール (IMAP)</li>
+<li>発生時刻: 23:30 JST 頃 = <strong>14:30 UTC 頃</strong></li>
+<li>症状: ログイン失敗ログが大量</li>
+</ul>
+</div>
+
+<div class="step">
+<div class="step-title">トリアージ起動</div>
+<div class="step-meta">T+0:02 · 技術調査係 · <span class="tag ai">AI Auto</span></div>
+<p>Claude Code に投入:</p>
+<pre data-lang="claude-code">/incident 14:30-14:40 victor</pre>
+<p>Claude が §1 ログ取得 → §2 時間窓フィルタを順次実行。実出力:</p>
+<pre data-lang="output">─── /incident §1 ログ取得 ───
+victor: victor / bravo: bravo
+─── 取得結果 ───
+  /tmp/incident_access.log:    1843 行
+  /tmp/incident_secure.log:    302 行
+  /tmp/incident_maillog.log:   524 行
+  /tmp/incident_named.log:     0 行
+  /tmp/incident_auth.log:      188 行
+
+─── /incident §2 時間窓フィルタ ───
+時間窓: 2026-05-02T14:30:00+00:00 〜 2026-05-02T14:40:00+00:00 (UTC)
+  /tmp/access.log:      260 行 (フィルタ後)</pre>
+</div>
+
+<div class="step">
+<div class="step-title">analyzer 検出</div>
+<div class="step-meta">T+0:05 · <span class="tag ai">AI Auto</span></div>
+<pre data-lang="output">─── /incident §3 analyzer ───
+検出シグナル: 5 件
+  [medium  ] mail   tag=mail/sasl-failed   ip=161.33.12.212
+  [medium  ] mail   tag=mail/sasl-failed   ip=161.33.12.212
+  [medium  ] mail   tag=mail/sasl-failed   ip=161.33.12.212
+  [medium  ] mail   tag=mail/sasl-failed   ip=161.33.12.212
+  [medium  ] mail   tag=mail/sasl-failed   ip=161.33.12.212</pre>
+<div class="callout warn"><strong>既知不具合</strong>analyzer の <code>webapp/auth-bruteforce</code> 集約が wp-login.php POST × 20 を拾えていない。260 行のうち 20 行が同 IP burst なのに mail のみ検出。<strong>人間判断で grep 確認</strong>が必要。</div>
+<p>Claude が補助 grep を実行:</p>
+<pre data-lang="bash">grep '161.33.12.212' /tmp/access.log | head</pre>
+<pre data-lang="output">2026-05-02T14:37:26+00:00 POST /wp-login.php ua=curl/8.5.0
+2026-05-02T14:37:27+00:00 POST /wp-login.php ua=curl/8.5.0
+... (20 回連続)</pre>
+<p>結論: <strong>WP brute (analyzer 漏れ) + IMAP brute (analyzer 検出)</strong> の複合確定。</p>
+</div>
+
+<div class="step">
+<div class="step-title">/check 並行起動</div>
+<div class="step-meta">T+0:10 · 技術調査係 · <span class="tag ai">AI Auto</span></div>
+<p>Claude が §5 で推奨した 5 本を並行起動:</p>
+<pre data-lang="claude-code">/check:check-known-attacker-ip
+/check:check-syslog-udp-injection
+/check:check-wp-xmlrpc-brute
+/check:check-courier-imap-plain
+/check:check-dovecot-passdb-pam</pre>
+<p>結果サマリ:</p>
+<table>
+<thead><tr><th>check</th><th>判定</th><th>主要根拠</th></tr></thead>
+<tbody>
+<tr><td>known-attacker-ip</td><td>⚠️ 疑い</td><td>10.1.129.10 由来活動なし、161.33.12.212 SSH 突破なし</td></tr>
+<tr><td>syslog-udp-injection</td><td>⚠️ 部分疑い</td><td>ホスト名 bravo / shirahama 混在 (デモ環境特性)</td></tr>
+<tr><td>wp-xmlrpc-brute</td><td>🚨 brute 確定 / 突破 ✅ 未遂</td><td>20 POST 全 status=200 = 全失敗</td></tr>
+<tr><td>courier-imap-plain</td><td>🚨 確定 (脆弱性露出)</td><td>method=PLAIN 5 件、disable_plaintext_auth=no</td></tr>
+<tr><td>dovecot-passdb-pam</td><td>🚨 確定 (露出) / 突破未確認</td><td>auth-system.conf.ext 有効、root 実在</td></tr>
+</tbody>
+</table>
+<p>追加発見: <code>/check:check-toor-uid0</code> で bravo に <code>toor:0:0:Backdoor Root</code>、<code>/check:check-obuchi-777-hijack</code> で victor の <code>/home/obuchi</code> が 777 — どちらも <strong>未侵害だが次手の足場</strong>として記録。</p>
+</div>
+
+<div class="step">
+<div class="step-title">統合解釈 → リーダー報告</div>
+<div class="step-meta">T+0:15 · 指揮係 · <span class="tag human">Human</span></div>
+<p>技術調査係から指揮係へ口頭報告:</p>
+<div class="callout note"><strong>note</strong>WP/IMAP brute 試行を確認、いずれも未突破。ただし bravo に toor UID0 backdoor、victor に <code>/home/obuchi</code> 777 露出を発見。攻撃者は IMAP で obuchi を試行しており、次回試行で公開鍵書き込みによる SSH 乗っ取りに移る可能性。封じ手 (perm 700 化、toor lock 維持) はリーダー承認後。</div>
+</div>
+
+<div class="step">
+<div class="step-title">対応実施 (リーダー承認後)</div>
+<div class="step-meta">T+0:20 · 技術調査係 · <span class="tag semi">AI × Human</span></div>
+<p>承認後、Claude に以下を実行させる (<code>settings.json</code> ask ゲート):</p>
+<pre data-lang="bash">ssh victor 'sudo chmod 700 /home/obuchi && sudo chown obuchi:obuchi /home/obuchi'
+# nginx で 161.33.12.212 を deny (一時策、ローテ可能性あり)
+# dovecot で disable_plaintext_auth=yes + ssl=required (リーダー承認次第)</pre>
+</div>
+
+<div class="step">
+<div class="step-title">/report で完了一次連絡</div>
+<div class="step-meta">T+0:25 · <span class="tag ai">AI Auto</span></div>
+<pre data-lang="claude-code">/report</pre>
+<p><code>/report</code> が完了判定チェックリストを評価し、封じ手が「リーダー承認後」止まりだったため <strong>「一次対応完了」モード</strong>に切替。出力例 (顧客向け 200 字):</p>
+<div class="callout"><strong>output</strong>5/3 23:37 頃、IP 161.33.12.212 からの組織的なログイン試行 (Web 管理画面 + メールサーバ) を検知しました。試行はすべて失敗しており、現時点で情報漏洩や権限突破は確認されていません。今後の再試行に備え、認証経路の強化と該当 IP のブロックを準備しています。</div>
+</div>
+
+<div class="step">
+<div class="step-title">/ticket で PukiWiki チケット生成</div>
+<div class="step-meta">T+90 · <span class="tag ai">AI Auto</span></div>
+<pre data-lang="claude-code">/ticket</pre>
+<p>出力 (PukiWiki マークアップ抜粋):</p>
+<pre data-lang="pukiwiki">*トラブルチケット: WP/IMAP brute force from 161.33.12.212 未遂
+#contents
+
+**発生時刻
+2026-05-03 23:37 JST (検知: 23:37)
+
+**トラブルの内容
+161.33.12.212 から victor wp-login.php への POST × 20 連打、
+および bravo dovecot IMAP への PLAIN 認証 5 件が
+14:37:26〜45 UTC の約 20 秒間バーストで観測された。
+両方とも認証失敗で突破には至らず。
+
+**原因
+攻撃者がブルートフォースで管理者アカウント奪取を試行。
+WP は HTTP 200 (認証失敗 HTML)、IMAP は dovecot auth failed。
+
+''関連ログ (一次エビデンス):''
+ 2026-05-02T14:37:26+00:00 POST /wp-login.php ua=curl/8.5.0
+ May 2 13:29:03 bravo dovecot[61589]: imap-login: ...
+   user=&lt;admin&gt;, method=PLAIN, rip=161.33.12.212
+
+**対処内容
+|時刻 (JST)|実施者|実施内容|コマンド/操作|h
+|23:45|技術調査係|/home/obuchi の権限を 700 に修正|chmod 700 /home/obuchi|
+|23:48|技術調査係|nginx で 161.33.12.212 を deny|nginx reload|
+
+**復旧確認
+- WP 管理画面: 192.0.2.1 からの正常ログインを 23:50 に確認
+- IMAP: 同 IP からの認証失敗ログがその後 30 分間出ていない
+...</pre>
+</div>
+
+</div>
+</div>
+
+
+<!-- ─── Example B ─── -->
+
+<div class="example" id="ex-b">
+<div class="example-head">
+  <span class="label">Example B</span>
+  <span class="title">HTTP flood DDoS — 「サイトが見られない」</span>
+</div>
+<div class="example-body">
+
+<p><strong>状況:</strong> 顧客から「うちのサイトが開けない」「画面真っ白」「ものすごく遅い」と通報。同時に複数ユーザから類似報告。</p>
+
+<div class="step">
+<div class="step-title">受電 — 切り分けの最初の質問</div>
+<div class="step-meta">T+0:00 · 電話応対係 · <span class="tag human">Human</span></div>
+<p><a href="02.1_先にやること.md">02.1 先にやること</a> に基づき、DDoS 判定の前に以下を確認:</p>
+<ul>
+<li>他のサイト (Google 等) は開けるか? → ネットワーク全体の問題切り分け</li>
+<li>社内からも外部からも見えないか?</li>
+<li>いつから? どの URL? エラー画面はある?</li>
+</ul>
+</div>
+
+<div class="step">
+<div class="step-title">トリアージ</div>
+<div class="step-meta">T+0:02 · 技術調査係 · <span class="tag ai">AI Auto</span></div>
+<pre data-lang="claude-code">/incident 13:00-13:30 victor</pre>
+<p>analyzer 出力で <strong>同一 IP からの burst</strong> が観測される (具体的 pattern_tag は出ないことが多い、§3.1.6 表参照):</p>
+<pre data-lang="output">─── /incident §3 analyzer ───
+検出シグナル: 312 件
+  [low ] webapp   tag=webapp/scanner-ua    ip=192.0.2.45
+  [low ] webapp   tag=webapp/scanner-ua    ip=192.0.2.45
+  ... (同一 IP 大量)</pre>
+<p>§5 ルーティング: 「同一 IP burst (tag 不在)」 → <code>/playbook:ddos</code> を提示。</p>
+</div>
+
+<div class="step">
+<div class="step-title">/playbook:ddos で切り分け</div>
+<div class="step-meta">T+0:10 · 技術調査係 · <span class="tag semi">AI × Human</span></div>
+<pre data-lang="claude-code">/playbook:ddos</pre>
+<p>playbook が以下を順に観測:</p>
+<ul>
+<li><strong>L7 (HTTP flood)</strong>: <code>access_log</code> から同一 IP・同一パス連打を抽出</li>
+<li><strong>L4 (SYN flood)</strong>: <code>ss -tan | grep SYN_RECV | wc -l</code></li>
+<li><strong>L3 (DNS amplification)</strong>: bravo named.log で ANY クエリ比率</li>
+</ul>
+</div>
+
+<div class="step">
+<div class="step-title">対応 — 段階的封じ込め</div>
+<div class="step-meta">T+0:18 · リーダー承認後 · <span class="tag semi">AI × Human</span></div>
+<p>Claude が候補コマンド提示。<code>iptables -j DROP</code> は <code>settings.json</code> ask ゲート発動 → 人間プロンプトで承認:</p>
+<pre data-lang="bash"># L7 (nginx rate_limit) — 一時策
+ssh victor 'sudo nginx -t && sudo nginx -s reload'
+
+# L4 (iptables 単一 IP DROP) — ask ゲート、人間承認後
+ssh victor 'sudo iptables -I INPUT -s 192.0.2.45 -j DROP'</pre>
+</div>
+
+<div class="step">
+<div class="step-title">完了報告</div>
+<div class="step-meta">T+0:25 · <span class="tag ai">AI Auto</span></div>
+<p><code>/report</code> → 「一次対応完了」モード (継続監視中)。次回報告 30 分後を顧客に通知。</p>
+</div>
+
+</div>
+</div>
+
+
+<!-- ─── Example C ─── -->
+
+<div class="example" id="ex-c">
+<div class="example-head">
+  <span class="label">Example C</span>
+  <span class="title">メール大量送信 — 「うちのメールが Gmail に弾かれる」</span>
+</div>
+<div class="example-body">
+
+<p><strong>状況:</strong> 顧客から「取引先 (Gmail) にメール送れない」「迷惑メール扱いされている」と通報。サーバ側の DKIM / SPF / オープンリレー疑い。</p>
+
+<div class="step">
+<div class="step-title">トリアージ</div>
+<div class="step-meta">T+0:02 · <span class="tag ai">AI Auto</span></div>
+<pre data-lang="claude-code">/incident 12:00-12:30 victor</pre>
+<p>analyzer 出力 (期待):</p>
+<pre data-lang="output">─── /incident §3 analyzer ───
+検出シグナル: 24 件
+  [high ] mail  tag=mail/relay-attempt  ip=&lt;外部 IP&gt;
+  [high ] mail  tag=mail/burst          from=apache@com1.local
+  [med  ] mail  tag=mail/spf-fail       domain=gmail.com</pre>
+<p>§5 ルーティング:</p>
+<ul>
+<li><code>mail/relay-attempt</code> → <code>/check:check-sendmail-open-relay</code> + <code>/check:check-sendmail-old-cf</code></li>
+<li><code>mail/burst</code> from=apache@ → <code>/check:check-aliases-root-forward</code></li>
+</ul>
+</div>
+
+<div class="step">
+<div class="step-title">/check で原因特定</div>
+<div class="step-meta">T+0:08 · <span class="tag ai">AI Auto</span></div>
+<pre data-lang="claude-code">/check:check-sendmail-open-relay /check:check-aliases-root-forward</pre>
+<p>典型パターン: sendmail が外部 → 外部のリレーを許してしまっている設定 (com6.local からの古い <code>sendmail.cf</code> 流用)。</p>
+</div>
+
+<div class="step">
+<div class="step-title">/playbook:phishing で対策</div>
+<div class="step-meta">T+0:15 · <span class="tag semi">AI × Human</span></div>
+<pre data-lang="claude-code">/playbook:phishing</pre>
+<p>提示される対策 (リーダー承認後):</p>
+<pre data-lang="bash"># sendmail のリレー制限を強化
+ssh victor 'sudo cp /etc/mail/access /etc/mail/access.bak'
+# access に明示 ACL 追記、makemap でハッシュ化
+# サービス再起動は ask ゲート
+ssh victor 'sudo systemctl restart sendmail'  # ← ask 発動、人間承認</pre>
+</div>
+
+<div class="step">
+<div class="step-title">完了報告</div>
+<div class="step-meta">T+0:25 · <span class="tag ai">AI Auto</span></div>
+<p><code>/report</code> → 顧客には「該当時間帯のリレーを停止、Gmail 側の評価が回復するまで 24h 程度かかる旨」を伝える。</p>
+</div>
+
+</div>
+</div>
+
+
+<!-- ─── Example D ─── -->
+
+<div class="example" id="ex-d">
+<div class="example-head">
+  <span class="label">Example D</span>
+  <span class="title">DNS 改ざん疑い — 「ウチのサイトが偽サイトに飛ぶ」</span>
+</div>
+<div class="example-body">
+
+<p><strong>状況:</strong> 「<code>www.com1.local</code> にアクセスすると見覚えのない偽サイトが出る」と通報。社内ユーザのみで再現するか、外部からも再現するかで原因が分岐。</p>
+
+<div class="step">
+<div class="step-title">トリアージ + 並行検証</div>
+<div class="step-meta">T+0:02 · <span class="tag ai">AI Auto</span></div>
+<pre data-lang="claude-code">/incident 11:30-12:00 bravo</pre>
+<p>analyzer 出力 (期待):</p>
+<pre data-lang="output">─── /incident §3 analyzer ───
+検出シグナル: 8 件
+  [high ] dns  tag=dns/unauthorized-update  zone=com1.local
+  [med  ] dns  tag=dns/update-denied        ip=&lt;内部 IP&gt;</pre>
+<p>並行で外部 DNS から名前解決の答え合わせ:</p>
+<pre data-lang="bash">dig @8.8.8.8 www.com1.local        # 外部 cache 経由
+dig @10.1.1.1 www.com1.local       # bravo 直接
+dig @10.1.130.1 www.com1.local     # CIC DNS</pre>
+</div>
+
+<div class="step">
+<div class="step-title">/check で痕跡確認</div>
+<div class="step-meta">T+0:08 · <span class="tag ai">AI Auto</span></div>
+<pre data-lang="claude-code">/check:check-bind-allow-update /check:check-rogue-dhcp</pre>
+<p>2 つの仮説を同時検証:</p>
+<ul>
+<li><strong>仮説 A:</strong> bravo の BIND <code>allow-update</code> 設定が緩く、nsupdate でゾーン書き換えされた → <code>check-bind-allow-update</code></li>
+<li><strong>仮説 B:</strong> 内部に rogue DHCP が立っていてクライアントの DNS 設定を上書き → <code>check-rogue-dhcp</code> (受電内容と整合)</li>
+</ul>
+</div>
+
+<div class="step">
+<div class="step-title">/scenario で連鎖確認</div>
+<div class="step-meta">T+0:12 · <span class="tag ai">AI Auto</span></div>
+<p>「DNS 改ざん + 受電『サイト見た目変』」が揃ったら:</p>
+<pre data-lang="claude-code">/scenario:dns-spoof-phish</pre>
+<p>キルチェーン (内部 MITM → DNS 書換 → フィッシング誘導) を一括検証。</p>
+</div>
+
+<div class="step">
+<div class="step-title">対応 + 報告</div>
+<div class="step-meta">T+0:20〜 · <span class="tag semi">AI × Human</span></div>
+<p><code>/playbook:dns-tamper</code> で BIND 設定の <code>allow-update none;</code> 化、ゾーンの再生成。<code>nsupdate</code> 系コマンドは <code>settings.json</code> deny ゲートで物理ブロック済 → 直接編集 (リーダー承認後 root 直 SSH)。</p>
+<p>フィッシング誘導された顧客には <code>/report</code> テンプレ 4 (外部第三者通報者向け) で謝意 + 注意喚起。</p>
+</div>
+
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     § 5 リファレンス
+     ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="s5"><span class="num">§ 5</span>リファレンス</h2>
+
+<h3 id="s51"><span class="num">5.1</span>ファイル構成<a href="#s51" class="anchor">#</a></h3>
+
+<pre data-lang="tree">shirahama/
+├── .claude/
+│   ├── commands/
+│   │   ├── incident.md          ← /incident
+│   │   ├── report.md            ← /report
+│   │   ├── ticket.md            ← /ticket
+│   │   ├── playbook/
+│   │   │   ├── wp-tamper.md
+│   │   │   ├── dns-tamper.md
+│   │   │   ├── ddos.md
+│   │   │   ├── phishing.md
+│   │   │   └── ransomware.md
+│   │   ├── scenario/            ← 3 本
+│   │   └── check/               ← 23 本
+│   ├── settings.json            ← build 時 (deny/ask 緩め)
+│   └── settings.production.json ← 本番用 (deny 厳格)
+├── agent/
+│   ├── analyzer.py              ← 観測層 (41 pattern)
+│   ├── validator.py             ← 検証層 (ReDoS 棄却)
+│   └── backends/
+│       ├── mock_backend.py      ← 判断層 1
+│       └── claude_backend.py    ← 判断層 2 (LLM)
+├── scripts/preprocess/
+│   ├── parse_clf.py             ← Apache CLF → JSONL
+│   ├── parse_named.py
+│   ├── parse_secure.py
+│   └── parse_maillog.py
+├── docs/
+│   ├── 00_目次.md                ← 全文書ハブ
+│   ├── 01〜23_*.md               ← 運用文書 23 本
+│   └── 25_システム仕様書.html    ← 本書
+└── tests/                        ← analyzer のベースライン</pre>
+
+<h3 id="s52"><span class="num">5.2</span>pattern_tag 一覧<a href="#s52" class="anchor">#</a></h3>
+
+<table>
+<thead><tr><th>カテゴリ</th><th>主な tag</th><th>入力ログ</th></tr></thead>
+<tbody>
+<tr><td>Web app</td><td><code>sqli/*</code> <code>xss/*</code> <code>path_traversal/*</code> <code>webapp/dotfile-access</code> <code>webapp/upload-php</code> <code>webapp/auth-bruteforce</code> <code>webapp/scanner-ua</code> <code>webapp/xmlrpc</code> <code>webapp/author-scan</code></td><td>httpd_access_log</td></tr>
+<tr><td>CMDI</td><td><code>system-call</code> <code>shell-exec-call</code> <code>proc-open-call</code> <code>passthru-call</code> <code>popen-call</code> <code>exec-call</code> <code>backtick-exec</code></td><td>httpd_access_log (URL 二重デコード)</td></tr>
+<tr><td>DNS</td><td><code>dns/unauthorized-update</code> <code>dns/update-denied</code> <code>dns/axfr-attempt</code> <code>dns/amplification-bait</code> <code>dns/amplification-ratio</code></td><td>named.log</td></tr>
+<tr><td>Plain-text & Privesc</td><td><code>protocol/telnet-access</code> <code>auth/ssh-failed</code> <code>auth/ssh-bruteforce</code> <code>auth/ssh-invalid-user</code> <code>privesc/pkexec-attempt</code> <code>privesc/sudo-unauthorized</code> <code>persist/at-job</code></td><td>secure / auth.log</td></tr>
+<tr><td>Mail</td><td><code>mail/spf-fail</code> <code>mail/dkim-fail</code> <code>mail/relay-attempt</code> <code>mail/relay-denied</code> <code>mail/sasl-failed</code> <code>mail/burst</code></td><td>maillog</td></tr>
+</tbody>
+</table>
+
+<h3 id="s53"><span class="num">5.3</span>環境変数<a href="#s53" class="anchor">#</a></h3>
+
+<table>
+<thead><tr><th>変数</th><th>用途</th><th>デフォルト</th></tr></thead>
+<tbody>
+<tr><td><code>SSH_VICTOR</code></td><td>victor への ssh 接続文字列</td><td><code>manage@10.1.1.2</code></td></tr>
+<tr><td><code>SSH_BRAVO</code></td><td>bravo への ssh 接続文字列</td><td><code>manage@10.1.1.1</code></td></tr>
+<tr><td><code>SHIRAHAMA_DIR</code></td><td>プロジェクトルート</td><td><code>/Users/ryu/Desktop/shirahama</code></td></tr>
+<tr><td><code>ANTHROPIC_API_KEY</code></td><td>Claude backend 用</td><td><code>.env</code> から自動 source</td></tr>
+</tbody>
+</table>
+
+<h3 id="s54"><span class="num">5.4</span>settings.json<a href="#s54" class="anchor">#</a></h3>
+
+<table>
+<thead><tr><th>層</th><th>件数</th><th>例</th></tr></thead>
+<tbody>
+<tr><td><strong>deny</strong> (絶対実行しない)</td><td>67</td><td><code>nsupdate</code> / <code>systemctl start/stop</code> / <code>dnf install</code> / <code>mysql -e "(INSERT|UPDATE|DELETE|DROP)"</code> / <code>Edit(/etc/**)</code></td></tr>
+<tr><td><strong>ask</strong> (人間判断要)</td><td>37</td><td><code>iptables -j DROP</code> / <code>kill -9</code> / <code>usermod -L</code> / <code>rm -rf</code></td></tr>
+<tr><td><strong>allow</strong> (即実行)</td><td>64</td><td><code>ssh manage@10.1.1.{1,2}</code> / <code>dig</code> / <code>tail</code> / <code>ss</code> / <code>ps</code> / <code>last</code> / <code>journalctl</code></td></tr>
+</tbody>
+</table>
+
+<div class="callout"><strong>tip</strong>build モード (settings.json) と production モード (settings.production.json) を切り替えて使う。本番直前に production を <code>cp</code> で settings.json に上書きする。<a href="../memory/system_scope.md">system_scope.md</a> 参照。</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     § 6 運用
+     ═══════════════════════════════════════════════════════════════ -->
+
+<h2 id="s6"><span class="num">§ 6</span>運用</h2>
+
+<h3 id="s60"><span class="num">6.0</span>試験前事前準備（D-1 までに完了）<a href="#s60" class="anchor">#</a></h3>
+
+<p>システムは log を分析するが、<strong>「どの log がどこにあって、どの設定ファイルがどう書かれているか」 を知らないと判定が遅くなる</strong>。当日の analyzer 出力を見て即「これは <code>/etc/dovecot/conf.d/auth-system.conf.ext</code> 由来」と理解できるよう、ファイル構造とログパスを事前に頭に入れておく。</p>
+
+<h4>6.0.1 必読資料 (D-1 まで)</h4>
+<table>
+<thead><tr><th>資料</th><th>覚えるべき内容</th></tr></thead>
+<tbody>
+<tr><td><a href="14_サーバ調査レポート_20260424.md">14_サーバ調査レポート</a></td><td>victor / bravo の既知脆弱性カタログ、ネットワーク構成</td></tr>
+<tr><td><a href="16_本番環境クイックリファレンス_whiskey.md">16_本番環境クイックリファレンス</a></td><td>IP / パスワード / 触禁機器の早見表 — <strong>机に貼る</strong></td></tr>
+<tr><td><a href="sccs2026_二次予選まとめ.md">sccs2026_二次予選まとめ</a></td><td>大会タイムライン、評価軸、PukiWiki 投稿先</td></tr>
+<tr><td><a href="03_シナリオ別対応プレイブック.md">03_シナリオ別プレイブック</a></td><td>8 シナリオごとの判定 → 封じ込め → 復旧 → 報告</td></tr>
+</tbody>
+</table>
+
+<h4>6.0.2 ログ・設定ファイルの場所 (暗記推奨)</h4>
+
+<table>
+<thead><tr><th>用途</th><th>victor (Rocky Linux)</th><th>bravo (FreeBSD)</th></tr></thead>
+<tbody>
+<tr><td>Web アクセス</td><td><code>/var/log/httpd/access_log</code></td><td><code>/var/log/httpd-access.log</code></td></tr>
+<tr><td>Web エラー</td><td><code>/var/log/httpd/error_log</code></td><td><code>/var/log/httpd-error.log</code></td></tr>
+<tr><td>認証 / SSH</td><td><code>/var/log/secure</code></td><td><code>/var/log/auth.log</code></td></tr>
+<tr><td>メール</td><td><code>/var/log/maillog</code></td><td><code>/var/log/maillog</code></td></tr>
+<tr><td>システム</td><td><code>/var/log/messages</code></td><td><code>/var/log/messages</code></td></tr>
+<tr><td>DNS</td><td>—</td><td><code>/var/log/named.log</code></td></tr>
+<tr><td>syslog 集約</td><td><code>/var/log/rsyslog/</code></td><td>—</td></tr>
+<tr><td>Apache 設定</td><td><code>/etc/httpd/conf/</code></td><td><code>/usr/local/etc/apache24/</code></td></tr>
+<tr><td>Sendmail 設定</td><td><code>/etc/mail/</code></td><td><code>/etc/mail/</code></td></tr>
+<tr><td>Dovecot 設定</td><td><code>/etc/dovecot/</code></td><td><code>/usr/local/etc/dovecot/</code></td></tr>
+<tr><td>BIND 設定</td><td>—</td><td><code>/usr/local/etc/namedb/</code> or <code>/etc/namedb/</code></td></tr>
+<tr><td>ユーザ / 権限</td><td><code>/etc/passwd</code> <code>/etc/shadow</code> <code>/etc/sudoers</code></td><td><code>/etc/passwd</code> <code>/etc/master.passwd</code> <code>/usr/local/etc/sudoers</code></td></tr>
+<tr><td>WordPress</td><td><code>/var/www/html/</code> + <code>wp-config.php</code></td><td>—</td></tr>
+<tr><td>RainLoop</td><td><code>/var/www/html/rain/</code></td><td>—</td></tr>
+</tbody>
+</table>
+
+<div class="callout warn"><strong>重要</strong>FreeBSD は Linux と <strong>パスが違う</strong>。<code>/var/log/secure</code> は無く <code>/var/log/auth.log</code>。Apache は <code>/usr/local/etc/apache24/</code>。BIND の chroot 有無も要確認。<code>/incident</code> はこの差を環境変数で吸収しているが、手動 grep する時はこの表を見ること。</div>
+
+<h4>6.0.3 D-1 リハーサル項目</h4>
+<ol>
+<li>OCI デモ環境 (bravo/victor on Rocky) で <code>/incident 00:00-23:59 victor</code> を 1 回フル実行。表示順 + 出力構造を頭に入れる</li>
+<li><code>/check:check-known-attacker-ip</code> + <code>/check:check-syslog-udp-injection</code> を空打ちして「 0 件のとき何が出るか」を見ておく (本番でビビらないため)</li>
+<li><a href="#" onclick="activateTab('intake'); return false;">受電シート</a> → <a href="#" onclick="activateTab('handoff'); return false;">引き継ぎ</a> → <a href="#" onclick="activateTab('review'); return false;">判定</a> の 3 タブをダミーデータで通す。事案ID 切替で localStorage が分離することを確認</li>
+<li><code>nsupdate</code> を Claude に提案させて <code>settings.json</code> deny でブロックされることを確認</li>
+<li>Phase 0–6 のチェックボックスを全部触り、進捗バーが 100% で緑になることを確認</li>
+</ol>
+
+<h3 id="s61"><span class="num">6.1</span>起動前チェック (本番朝 30 分)<a href="#s61" class="anchor">#</a></h3>
+
+<ol>
+<li>VPN 接続: <code>133.42.49.151</code> / 事前共有キー <code>sccs2026-DmJYjc</code></li>
+<li>SSH 疎通: <code>ssh manage@10.1.1.1</code> / <code>ssh manage@10.1.1.2</code></li>
+<li>CIC からの確認メールに返信 (必須・忘れずに)</li>
+<li>PukiWiki ログイン: <code>http://133.42.49.140/trouble_ticket_137/</code> (whiskey / E5mA9cF3)</li>
+<li>WordPress ログイン: <code>http://www.com1.local/wp-admin/</code> (admin / Cm0re)</li>
+<li><code>/incident 00:00-00:01 victor</code> 空打ち (ssh 疎通 + analyzer がエラー無く返るか)</li>
+<li><code>/report</code> 空打ち (~/Desktop/shirahama_test.md でテンプレ全種が出るか)</li>
+<li><code>/ticket</code> 空打ち (PukiWiki マークアップが出るか)</li>
+<li><code>nsupdate</code> を Claude に提案させて settings.json で deny ヒットすることを確認</li>
+</ol>
+
+<h3 id="s62"><span class="num">6.2</span>トラブルシューティング<a href="#s62" class="anchor">#</a></h3>
+
+<table>
+<thead><tr><th>症状</th><th>原因候補</th><th>対処</th></tr></thead>
+<tbody>
+<tr><td><code>/incident</code> §1 で全ログが 0 行</td><td>SSH 疎通失敗</td><td><code>ssh manage@10.1.1.x 'echo OK'</code> で個別確認 / VPN 再接続</td></tr>
+<tr><td>analyzer §3 で 0 件</td><td>時間窓が UTC ずれ</td><td>JST 渡してないか確認 (-9h 必要)</td></tr>
+<tr><td>analyzer §3 で webapp 漏れ</td><td>既知集約バグ (<a href="#ex-a">§4.A</a>)</td><td>grep で補助確認</td></tr>
+<tr><td>Claude backend 401</td><td>API キー期限切れ</td><td><code>.env</code> 確認 / Mock-only モードで続行</td></tr>
+<tr><td><code>/report</code> がテンプレ 1 でなく一次対応完了に固定</td><td>仕様 (封じ手未実施)</td><td>正しい挙動。実施後再実行</td></tr>
+<tr><td>PukiWiki マークアップで表組み崩れ</td><td>マークアップ中に絵文字混入</td><td><code>/ticket</code> §3.6.2 禁則確認</td></tr>
+</tbody>
+</table>
+
+<h3 id="s63"><span class="num">6.3</span>やらないこと (Yellow Line)<a href="#s63" class="anchor">#</a></h3>
+
+<ul>
+<li>AI が顧客に直接電話 / メール送信 — 顧客対応の温度感調整は人間の役割</li>
+<li>AI が破壊系コマンドを自動実行 — settings.json で物理ブロック済</li>
+<li>AI が PukiWiki に直接投稿 — 認証情報を Claude に渡さない</li>
+<li>AI が複数インシデントの優先度を決める — 指揮係の領域</li>
+<li>動的な攻撃カテゴリ再判定 — 1 件ごとに <code>/incident</code> 再起動</li>
+<li>未知攻撃カテゴリの新規 pattern 動的生成 — 6 カテゴリ汎用化と矛盾</li>
+</ul>
+
+
+<!-- ─────── FOOT ─────── -->
+<div class="doc-foot">
+  Whiskey / Booth 1 · com1.local · SCCS 2026 二次予選 · 2026-05-03 generated
+</div>
+
+</main>
+</div>
+</section>
+
+
+<!-- ═════════════════════ TAB: INTAKE (受電シート) ═════════════════════ -->
+<section data-tab-content="intake" class="tab-pane">
+<div class="form-pane">
+
+<div class="form-header">
+  <div>
+    <h1 class="form-title">01. 受電ヒアリングシート</h1>
+    <div class="form-sub">電話を取った最初の30秒で記入。事案ID 単位で自動保存。</div>
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary" onclick="copyIntakeText()">テキスト出力 + コピー</button>
+    <button class="btn btn-warn" onclick="clearForm('intake')">クリア</button>
+  </div>
+</div>
+
+<form data-form="intake" onsubmit="return false;">
+
+  <div class="field-group">
+    <div class="field-group-head">共通冒頭（必ず最初に確保）<span class="meta">3 + 対応者</span></div>
+    <div class="field-group-body">
+      <div class="field-row">
+        <div class="field"><label>所属<span class="req">*</span></label><input type="text" name="affil" placeholder="例: 〇〇株式会社 営業部"></div>
+        <div class="field"><label>氏名<span class="req">*</span></label><input type="text" name="name" placeholder="例: 田中 太郎"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>折り返し電話 / メール<span class="req">*</span></label><input type="text" name="callback" placeholder="090-XXXX-XXXX / xxx@example.com"></div>
+        <div class="field"><label>受電時刻<span class="req">*</span></label><input id="i-time" type="datetime-local" name="time"></div>
+      </div>
+      <div class="field"><label>対応者（自分の名前）</label><input type="text" name="operator"></div>
+    </div>
+  </div>
+
+  <div class="field-group">
+    <div class="field-group-head">パターン判定<span class="meta">A / B / C / D</span></div>
+    <div class="field-group-body">
+      <p style="font-size:12.5px; color:var(--ink-3); margin-bottom:0.6rem;">相手の第一声でパターンを選ぶ。判定不能なら A を選ぶ。</p>
+      <div class="pattern-grid">
+        <div class="pattern-card" data-pattern="A">
+          <div class="key">Pattern A</div>
+          <div class="name">ユーザ苦情</div>
+          <div class="desc">「○○が使えない」「画面がおかしい」</div>
+        </div>
+        <div class="pattern-card" data-pattern="B">
+          <div class="key">Pattern B</div>
+          <div class="name">顧客担当者報告</div>
+          <div class="desc">「監視数値が異常」「取引先からクレーム」</div>
+        </div>
+        <div class="pattern-card" data-pattern="C">
+          <div class="key">Pattern C</div>
+          <div class="name">経営層苦情</div>
+          <div class="desc">「どうなってる」「いつ復旧」「責任は」</div>
+        </div>
+        <div class="pattern-card" data-pattern="D">
+          <div class="key">Pattern D</div>
+          <div class="name">外部第三者通報</div>
+          <div class="desc">「貴社から不審メールが来た」</div>
+        </div>
+      </div>
+      <input type="hidden" id="pattern-input" name="pattern" value="">
+    </div>
+  </div>
+
+  <!-- Pattern A -->
+  <div class="field-group pattern-section" data-pattern="A" style="display:none;">
+    <div class="field-group-head">A. ユーザ苦情・問い合わせ<span class="meta">7 + 依頼</span></div>
+    <div class="field-group-body">
+      <div class="field"><label>1. どの端末・サービスで起きていますか</label><input type="text" name="a-target" placeholder="営業部のノートPC / 社内ポータル / メール"></div>
+      <div class="field"><label>2. いつから発生していますか</label><input type="text" name="a-onset" placeholder="10:15 頃から"></div>
+      <div class="field"><label>3. どういう症状ですか<span class="hint">画面の文字 / エラー番号 / 色等</span></label><textarea name="a-symptom" placeholder="赤い画面、英文メッセージ"></textarea></div>
+      <div class="field"><label>4. 直前に何をしましたか<span class="hint">添付開封 / USB接続 / インストール等</span></label><textarea name="a-precede" placeholder="メール添付の Excel を開いた"></textarea></div>
+      <div class="field"><label>5. 他の人にも起きていますか</label><input type="text" name="a-others" placeholder="隣の席の田中さんも同じ"></div>
+      <div class="field"><label>6. 今、その端末で何か操作していますか</label><input type="text" name="a-curr-op" placeholder="何もしていない"></div>
+      <div class="field"><label>7. 電源は入ったままですか</label><input type="text" name="a-power" placeholder="はい / いいえ / 不明"></div>
+
+      <p style="margin-top:1rem; font-weight:600; font-size:12.5px; color:var(--warn); letter-spacing:0.05em;">★ 相手に必ず伝えること（依頼）</p>
+      <label class="field-check"><input type="checkbox" name="a-req-no-touch"> 端末に触らない</label>
+      <label class="field-check"><input type="checkbox" name="a-req-no-power-off"> 電源を切らない・再起動しない</label>
+      <label class="field-check"><input type="checkbox" name="a-req-no-cable"> ネットワークケーブルを抜かない</label>
+      <label class="field-check"><input type="checkbox" name="a-req-photo"> 画面の写真を撮影してもらう</label>
+
+      <div class="field" style="margin-top:1rem;"><label>次アクション約束時刻<span class="hint">例: 10分以内に折り返し</span></label><input type="text" name="a-next-time" placeholder="10:30 までに折り返し"></div>
+    </div>
+  </div>
+
+  <!-- Pattern B -->
+  <div class="field-group pattern-section" data-pattern="B" style="display:none;">
+    <div class="field-group-head">B. 顧客担当者からの報告・通報<span class="meta">6</span></div>
+    <div class="field-group-body">
+      <div class="field"><label>1. どのシステム・サービスで異常を観測しましたか</label><input type="text" name="b-system"></div>
+      <div class="field"><label>2. 観測された具体的な数値・ログ<span class="hint">アクセス急増 / 応答遅延 / エラー率等</span></label><textarea name="b-observation"></textarea></div>
+      <div class="field"><label>3. 観測時刻と推移</label><textarea name="b-timeline"></textarea></div>
+      <div class="field"><label>4. 顧客側で既に実施した操作はありますか<span class="hint">再起動 / 切り離し / 設定変更</span></label><input type="text" name="b-actions-done"></div>
+      <div class="field"><label>5. 影響を受けている利用者の範囲</label><input type="text" name="b-impact" placeholder="全員 / 一部 / 社外 / 社内"></div>
+      <div class="field"><label>6. 今後の窓口</label><input type="text" name="b-window" placeholder="連絡先・連絡可能時刻"></div>
+      <div class="field"><label>次アクション約束時刻</label><input type="text" name="b-next-time"></div>
+    </div>
+  </div>
+
+  <!-- Pattern C -->
+  <div class="field-group pattern-section" data-pattern="C" style="display:none;">
+    <div class="field-group-head">C. 経営層からの苦情・要求<span class="meta">4 + 4 点伝達</span></div>
+    <div class="field-group-body">
+      <div class="callout note" style="margin:0 0 1rem;"><strong>note</strong>強い口調の電話。「ご心配をおかけしております。現在の状況を正確にお伝えします」と切り出す。</div>
+      <div class="field"><label>相手が把握している事実<span class="hint">情報源含む (取引先 / メディア / 社員)</span></label><textarea name="c-known"></textarea></div>
+      <div class="field"><label>求められている判断<span class="hint">即時復旧 / 公表可否 / 取引先通知</span></label><textarea name="c-decision-needed"></textarea></div>
+      <div class="field-row">
+        <div class="field"><label>合意した報告頻度</label><input type="text" name="c-freq" placeholder="例: 30分ごと"></div>
+        <div class="field"><label>次回連絡時刻</label><input type="text" name="c-next-time"></div>
+      </div>
+
+      <p style="margin-top:1rem; font-weight:600; font-size:12.5px; color:var(--accent);">経営層に伝える 4 点テンプレ</p>
+      <div class="field"><label>【事実】 現時点で分かっていること</label><textarea name="c-fact"></textarea></div>
+      <div class="field"><label>【対応中】 今やっていること</label><textarea name="c-doing"></textarea></div>
+      <div class="field"><label>【見通し】 次の区切りまでの時間</label><textarea name="c-eta"></textarea></div>
+      <div class="field"><label>【判断事項】 ご判断いただきたいこと</label><textarea name="c-decision"></textarea></div>
+    </div>
+  </div>
+
+  <!-- Pattern D -->
+  <div class="field-group pattern-section" data-pattern="D" style="display:none;">
+    <div class="field-group-head">D. 外部第三者からの通報<span class="meta">4</span></div>
+    <div class="field-group-body">
+      <div class="callout warn" style="margin:0 0 1rem;"><strong>注意</strong>陽動の可能性も考慮。本当に自社起因か、ログ照合まで断定しない。</div>
+      <div class="field"><label>1. どのようにして弊社関与だと特定しましたか<span class="hint">送信元IP / ヘッダ / ドメイン</span></label><textarea name="d-evidence-source"></textarea></div>
+      <div class="field"><label>2. 発生時刻・頻度・規模</label><textarea name="d-when"></textarea></div>
+      <div class="field"><label>3. 提供された証拠 (ログ / メール / URL)</label><textarea name="d-evidence"></textarea></div>
+      <div class="field-row">
+        <div class="field"><label>信憑性評価</label>
+          <select name="d-credibility">
+            <option value="">選択</option>
+            <option value="高">高</option>
+            <option value="中">中</option>
+            <option value="低">低</option>
+          </select>
+        </div>
+        <div class="field"><label>低と判定した場合の理由</label><input type="text" name="d-low-reason"></div>
+      </div>
+      <div class="field"><label>次アクション約束時刻</label><input type="text" name="d-next-time"></div>
+    </div>
+  </div>
+
+</form>
+</div>
+</section>
+
+
+<!-- ═════════════════════ TAB: HANDOFF (引き継ぎ) ═════════════════════ -->
+<section data-tab-content="handoff" class="tab-pane">
+<div class="form-pane">
+
+<div class="form-header">
+  <div>
+    <h1 class="form-title">02. 技術担当引き継ぎテンプレート</h1>
+    <div class="form-sub">受電内容を整理して技術担当に渡す。事実と申告を分ける。</div>
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary" onclick="copyHandoffText()">フル版 出力</button>
+    <button class="btn" onclick="copyHandoffShort()">短縮版コピー</button>
+    <button class="btn btn-warn" onclick="clearForm('handoff')">クリア</button>
+  </div>
+</div>
+
+<form data-form="handoff" onsubmit="return false;">
+
+  <div class="field-group">
+    <div class="field-group-head">引き継ぎサマリ（30秒で把握）<span class="meta">header</span></div>
+    <div class="field-group-body">
+      <div class="field-row">
+        <div class="field"><label>事案ID</label><input type="text" name="h-id" placeholder="INC-20260505-001"></div>
+        <div class="field"><label>受電時刻</label><input type="datetime-local" name="h-recv-time"></div>
+      </div>
+      <div class="field"><label>報告者（所属／氏名／連絡先）</label><input type="text" name="h-reporter"></div>
+      <div class="field-row">
+        <div class="field"><label>発生時刻（申告）</label><input type="text" name="h-occur-time" placeholder="13:50 頃から"></div>
+        <div class="field"><label>対象（サービス / 端末 / セグメント）</label><input type="text" name="h-target"></div>
+      </div>
+      <div class="field-row field-row-3">
+        <div class="field"><label>想定影響</label>
+          <select name="h-impact">
+            <option value="">選択</option>
+            <option value="業務停止">業務停止</option>
+            <option value="情報漏えい疑">情報漏えい疑</option>
+            <option value="外部からの攻撃">外部からの攻撃</option>
+            <option value="未分類">未分類</option>
+          </select>
+        </div>
+        <div class="field"><label>緊急度</label>
+          <select name="h-urgency">
+            <option value="">選択</option>
+            <option value="高">高 (拡大中)</option>
+            <option value="中">中</option>
+            <option value="低">低</option>
+          </select>
+        </div>
+        <div class="field"><label>優先度</label>
+          <select name="h-priority">
+            <option value="">選択</option>
+            <option value="P1">P1</option>
+            <option value="P2">P2</option>
+            <option value="P3">P3</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="field-group">
+    <div class="field-group-head">事実と申告の分離（最重要）<span class="meta">3 buckets</span></div>
+    <div class="field-group-body">
+      <div class="field"><label>確認済み事実<span class="hint">ログで裏取りできているもの</span></label>
+        <textarea name="h-fact" rows="3" placeholder="10:20 ○○ログに××のエントリあり (ログ取得 10:25)"></textarea></div>
+      <div class="field"><label>相手の申告（未確認）<span class="hint">伝聞 / 本人の申告のみ</span></label>
+        <textarea name="h-claim" rows="3" placeholder="メールの添付を開いたら画面が赤くなった ← ユーザ本人の申告のみ"></textarea></div>
+      <div class="field"><label>不明・未取得</label>
+        <textarea name="h-unknown" rows="2" placeholder="当該端末のホスト名・IP / 添付の現物 / 画面キャプチャ"></textarea></div>
+    </div>
+  </div>
+
+  <div class="field-group">
+    <div class="field-group-head">依頼事項<span class="meta">checkboxes</span></div>
+    <div class="field-group-body">
+      <p style="font-weight:600; font-size:12.5px; color:var(--link); margin-bottom:0.4rem;">ネットワーク管理者向け</p>
+      <label class="field-check"><input type="checkbox" name="h-nw-traffic"> 当該ポート / VLAN のトラフィック確認</label>
+      <label class="field-check"><input type="checkbox" name="h-nw-out"> 外向き通信（未知 IP・不審 DNS）調査</label>
+      <label class="field-check"><input type="checkbox" name="h-nw-isolate"> 該当端末を隔離 VLAN に移動（指揮承認後）</label>
+      <label class="field-check"><input type="checkbox" name="h-nw-fw"> FW/UTM ログで当該 IP の通信履歴抽出（過去 24h）</label>
+      <label class="field-check"><input type="checkbox" name="h-nw-vpn"> VPN 接続中の外部ユーザに異常がないか確認</label>
+
+      <p style="font-weight:600; font-size:12.5px; color:var(--link); margin-top:1rem; margin-bottom:0.4rem;">サーバ管理者向け</p>
+      <label class="field-check"><input type="checkbox" name="h-sv-log"> ログ確認（/var/log/secure, messages, アプリログ）</label>
+      <label class="field-check"><input type="checkbox" name="h-sv-proc"> 不審な外部通信プロセス確認</label>
+      <label class="field-check"><input type="checkbox" name="h-sv-auth"> 認証ログで異常ログイン有無</label>
+      <label class="field-check"><input type="checkbox" name="h-sv-web"> Web アクセスログで不審リクエスト（24h）</label>
+      <label class="field-check"><input type="checkbox" name="h-sv-tamper"> ファイル改ざん確認（Web ルート / 設定）</label>
+      <label class="field-check"><input type="checkbox" name="h-sv-restart"> サービス停止 / 再起動の要否判断（指揮承認後）</label>
+
+      <div class="field" style="margin-top:1rem;"><label>その他の依頼事項（自由記述）</label><textarea name="h-other-req" rows="2"></textarea></div>
+    </div>
+  </div>
+
+  <div class="field-group">
+    <div class="field-group-head">Claude 投入用 (/incident)<span class="meta">claude-code</span></div>
+    <div class="field-group-body">
+      <p style="font-size:12.5px; color:var(--ink-3); margin-bottom:0.7rem;">入力した内容から <code>/incident</code> コマンドを生成。技術調査係はこれを Claude Code にコピペ。</p>
+      <div class="field-row">
+        <div class="field"><label>時間窓 (UTC HH:MM-HH:MM)<span class="hint">JST から -9h</span></label><input type="text" name="h-window" placeholder="例: 14:30-14:40"></div>
+        <div class="field"><label>主要嫌疑ホスト</label>
+          <select name="h-host">
+            <option value="">選択</option>
+            <option value="victor">victor (Web/Mail/DHCP)</option>
+            <option value="bravo">bravo (DNS/掲示板)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><button type="button" class="btn btn-primary" onclick="copyIncidentCmd()">/incident コマンドをコピー</button></div>
+    </div>
+  </div>
+
+</form>
+</div>
+</section>
+
+
+<!-- ═════════════════════ TAB: REVIEW (判定 / 事象判定) ═════════════════════ -->
+<section data-tab-content="review" class="tab-pane">
+<div class="form-pane">
+
+<div class="form-header">
+  <div>
+    <h1 class="form-title">判定 / 事象レビュー</h1>
+    <div class="form-sub">受電内容 + ログ分析結果を突合し、対応要否を 4 択で確定する。チーム合議の場。</div>
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary" onclick="copyReviewText()">判定をコピー</button>
+    <button class="btn" onclick="copyReplyTemplate()">回答テンプレ生成</button>
+    <button class="btn btn-warn" onclick="clearForm('review')">クリア</button>
+  </div>
+</div>
+
+<form data-form="review" onsubmit="return false;">
+
+  <!-- 受電サマリ -->
+  <div class="field-group">
+    <div class="field-group-head">
+      ① 受電サマリ
+      <span class="meta">from intake</span>
+    </div>
+    <div class="field-group-body">
+      <p style="font-size:12.5px; color:var(--ink-3); margin-bottom:0.5rem;">受電シートタブの内容を取り込む。同じ事案 ID でないと取り込めない。</p>
+      <button type="button" class="btn" onclick="pullIntakeSummary()">受電シートから取り込み</button>
+      <div class="field" style="margin-top:0.7rem;">
+        <textarea name="r-intake-summary" rows="6" placeholder="（受電シートタブで記入後、上のボタンを押すと自動転記）" style="font-family:var(--font-mono); font-size:12px;"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ログ分析結果 -->
+  <div class="field-group">
+    <div class="field-group-head">
+      ② ログ分析結果
+      <span class="meta">/incident output</span>
+    </div>
+    <div class="field-group-body">
+      <p style="font-size:12.5px; color:var(--ink-3); margin-bottom:0.5rem;"><code>/incident</code> §3 analyzer / §4 判断層 / §6 SOC summary の出力をここに貼る。</p>
+      <div class="field"><label>analyzer 検出シグナル (§3)</label><textarea name="r-analyzer" rows="4" placeholder="検出シグナル: 5 件&#10;  [medium  ] mail   tag=mail/sasl-failed   ip=161.33.12.212&#10;  ..." style="font-family:var(--font-mono); font-size:12px;"></textarea></div>
+      <div class="field"><label>Mock + Claude 提案 (§4)</label><textarea name="r-judgment" rows="3" placeholder="[block ] conf=0.85  rule_id=...&#10;[rate_limit ] conf=0.72  ..." style="font-family:var(--font-mono); font-size:12px;"></textarea></div>
+      <div class="field"><label>SOC summary (§6)</label><textarea name="r-soc" rows="3" placeholder="同一 IP 161.33.12.212 から WP brute + IMAP brute の複合攻撃を観測..."></textarea></div>
+      <div class="field"><label>📞 顧客追加質問 (§7) — 残った疑問</label><textarea name="r-questions" rows="2" placeholder="□ 14:37 UTC 頃に管理画面で作業予定はあったか?&#10;□ obuchi 氏は本日出社していたか?"></textarea></div>
+    </div>
+  </div>
+
+  <!-- 突合メモ -->
+  <div class="field-group">
+    <div class="field-group-head">
+      ③ 突合 — 受電 vs ログ
+      <span class="meta">consistency check</span>
+    </div>
+    <div class="field-group-body">
+      <div class="field-row">
+        <div class="field"><label>受電とログが一致した点<span class="hint">攻撃の存在を裏付ける</span></label><textarea name="r-match" rows="3" placeholder="受電「メール送れない」 = maillog の sasl-failed 5 件と整合"></textarea></div>
+        <div class="field"><label>受電とログが食い違う点<span class="hint">陽動 / 誤通報の可能性</span></label><textarea name="r-mismatch" rows="3" placeholder="受電「サイトが見えない」だが access_log は正常 → 別の経路 (DNS / クライアント側) を疑う"></textarea></div>
+      </div>
+      <div class="field"><label>不明・未取得の事実 — 顧客に追加で聞くべきこと</label><textarea name="r-unknown" rows="2" placeholder="社内に同時刻の管理者作業はあったか?"></textarea></div>
+    </div>
+  </div>
+
+  <!-- 判定 4 択 -->
+  <div class="field-group">
+    <div class="field-group-head">
+      ④ 判定 — JPCERT 決定木の分岐
+      <span class="meta">required</span>
+    </div>
+    <div class="field-group-body">
+      <p style="font-size:12.5px; color:var(--ink-3); margin-bottom:0.7rem;">受電 + ログから現時点の判定を 1 つ選ぶ。途中で覆ってもよい (再判定ループ)。</p>
+      <label class="field-check"><input type="radio" name="r-verdict" value="A-対応不要" onchange="updateVerdictUI()"><span><strong>A. 対応不要</strong> — 弊社対応の対象外 (誤通報 / 自社外起因 / 仕様)。受電係から根拠付きで回答。</span></label>
+      <label class="field-check"><input type="radio" name="r-verdict" value="B-情報提供のみ" onchange="updateVerdictUI()"><span><strong>B. 情報提供のみ</strong> — 攻撃ではないが注意喚起すべき (設定不備、運用ミス、外部要因)。注意喚起テキストを生成。</span></label>
+      <label class="field-check"><input type="radio" name="r-verdict" value="C-追加情報待ち" onchange="updateVerdictUI()"><span><strong>C. 追加情報待ち</strong> — 判定材料が不足。📞 顧客に追加聞き取りしてから再判定。</span></label>
+      <label class="field-check"><input type="radio" name="r-verdict" value="D-対応必要" onchange="updateVerdictUI()"><span><strong>D. 対応必要</strong> — 攻撃確定 or 強い疑い。インシデントレスポンスへ進む。</span></label>
+
+      <div class="field" style="margin-top:1rem;"><label>判定の根拠（ログ行・観測事実を引用）</label><textarea name="r-reason" rows="3" placeholder="161.33.12.212 から 20 POST 全 status=200 = 失敗。ただし IMAP brute と並行 = 組織的な試行と判定。"></textarea></div>
+    </div>
+  </div>
+
+  <!-- 判定別の派生入力 -->
+  <div class="field-group verdict-section" data-verdict="A-対応不要" style="display:none;">
+    <div class="field-group-head">A. 対応不要 — 回答内容</div>
+    <div class="field-group-body">
+      <div class="field"><label>回答相手</label><input type="text" name="r-a-target" placeholder="顧客担当者 / 経営層 / 通報者"></div>
+      <div class="field"><label>回答内容（根拠を含む）</label><textarea name="r-a-reply" rows="4" placeholder="ご通報いただきありがとうございます。確認したところ〇〇のため、現時点で弊社サーバ起因の問題は確認されませんでした..."></textarea></div>
+      <div class="field"><label>回答時刻</label><input type="text" name="r-a-time"></div>
+    </div>
+  </div>
+
+  <div class="field-group verdict-section" data-verdict="B-情報提供のみ" style="display:none;">
+    <div class="field-group-head">B. 情報提供のみ — 注意喚起内容</div>
+    <div class="field-group-body">
+      <div class="field"><label>注意喚起の対象</label><input type="text" name="r-b-target" placeholder="社内全員 / 該当部署 / 管理者のみ"></div>
+      <div class="field"><label>注意喚起の本文</label><textarea name="r-b-alert" rows="4" placeholder="本日 14:37 頃に外部 IP からのログイン試行を観測しました。試行は失敗していますが、念のため以下にご注意ください..."></textarea></div>
+      <div class="field"><label>関係者への通知方法</label><input type="text" name="r-b-channel" placeholder="メール / 全社チャット / 個別電話"></div>
+    </div>
+  </div>
+
+  <div class="field-group verdict-section" data-verdict="C-追加情報待ち" style="display:none;">
+    <div class="field-group-head">C. 追加情報待ち — 顧客に聞くこと</div>
+    <div class="field-group-body">
+      <div class="field"><label>受電係に依頼する追加質問（電話で聞く）</label><textarea name="r-c-questions" rows="4" placeholder="□ 14:37 頃に管理画面を使う業務予定があったか&#10;□ admin / manage アカウント利用者の在席状況&#10;□ 社内ネットワーク経由か外部経由か"></textarea></div>
+      <div class="field"><label>次の再判定時刻 (この時刻までに聞き取り完了)</label><input type="text" name="r-c-deadline"></div>
+    </div>
+  </div>
+
+  <div class="field-group verdict-section" data-verdict="D-対応必要" style="display:none;">
+    <div class="field-group-head">D. 対応必要 — 対応計画</div>
+    <div class="field-group-body">
+      <div class="field"><label>事象分類</label>
+        <select name="r-d-category">
+          <option value="">選択</option>
+          <option value="WP/Web 改ざん">WP / Web 改ざん</option>
+          <option value="DDoS / 大量アクセス">DDoS / 大量アクセス</option>
+          <option value="フィッシング / IMAP brute">フィッシング / IMAP brute</option>
+          <option value="DNS 改ざん">DNS 改ざん</option>
+          <option value="ランサム / 横展開">ランサム / 横展開</option>
+          <option value="不正送信メール">不正送信メール</option>
+          <option value="情報漏えい">情報漏えい</option>
+          <option value="複合 (キルチェーン)">複合 (キルチェーン)</option>
+        </select>
+      </div>
+      <div class="field"><label>該当 /playbook</label>
+        <select name="r-d-playbook">
+          <option value="">選択</option>
+          <option value="/playbook:wp-tamper">/playbook:wp-tamper</option>
+          <option value="/playbook:dns-tamper">/playbook:dns-tamper</option>
+          <option value="/playbook:ddos">/playbook:ddos</option>
+          <option value="/playbook:phishing">/playbook:phishing</option>
+          <option value="/playbook:ransomware">/playbook:ransomware</option>
+          <option value="/scenario:killchain-recon-rce-dbexfil">/scenario:killchain-recon-rce-dbexfil</option>
+          <option value="/scenario:dns-spoof-phish">/scenario:dns-spoof-phish</option>
+          <option value="/scenario:vpn-uplink-abuse">/scenario:vpn-uplink-abuse</option>
+        </select>
+      </div>
+      <div class="field"><label>体制 (技術対応の可否)</label>
+        <select name="r-d-capability">
+          <option value="">選択</option>
+          <option value="自組織で技術対応可能">自組織で技術対応可能 (IT 部署と連携)</option>
+          <option value="技術対応困難 / 経営層連携">技術対応困難 (経営層連携)</option>
+          <option value="外部支援要">外部支援要 (ベンダー / 専門機関)</option>
+        </select>
+      </div>
+      <div class="field"><label>封じ込め計画 (拡大停止)<span class="hint">復旧より先に</span></label><textarea name="r-d-containment" rows="3" placeholder="1. nginx で 161.33.12.212 を deny&#10;2. 該当アカウント (admin / manage) のパスワードリセット&#10;3. dovecot で disable_plaintext_auth=yes (リーダー承認後)"></textarea></div>
+      <div class="field"><label>復旧計画</label><textarea name="r-d-recovery" rows="2" placeholder="認証ログ監視を 30 分継続。再試行なければ封じ込め維持で稼働継続。"></textarea></div>
+      <div class="field"><label>解決確認方法</label><textarea name="r-d-verify" rows="2" placeholder="同 IP からの 401 / 認証失敗が 30 分間 0 件であること"></textarea></div>
+      <div class="field"><label>顧客への中間連絡内容</label><textarea name="r-d-interim" rows="2" placeholder="ご通報の件、攻撃試行を確認しました。封じ込めを実施し、引き続き監視します。次回 23:55 までに進捗をご連絡します。"></textarea></div>
+    </div>
+  </div>
+
+  <!-- 連絡時刻 -->
+  <div class="field-group">
+    <div class="field-group-head">⑤ 連絡 / 終了</div>
+    <div class="field-group-body">
+      <div class="field-row">
+        <div class="field"><label>判定確定時刻</label><input type="datetime-local" name="r-decided-at"></div>
+        <div class="field"><label>次回再判定 / 連絡時刻</label><input type="text" name="r-next-time" placeholder="例: 23:55 / 再判定不要"></div>
+      </div>
+      <div class="field"><label>合議参加者</label><input type="text" name="r-attendees" placeholder="例: 受電係, 技術調査係, 指揮係"></div>
+    </div>
+  </div>
+
+</form>
+</div>
+</section>
+
+
+<!-- ═════════════════════ TAB: CHECKLIST (進捗チェック) ═════════════════════ -->
+<section data-tab-content="checklist" class="tab-pane">
+<div class="form-pane">
+
+<div class="form-header">
+  <div>
+    <h1 class="form-title">05. 全体チェックシート</h1>
+    <div class="form-sub">Phase 0〜6 のタスク管理。1事案=1シート、自動保存。</div>
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary" onclick="copyChecklistStatus()">進捗をコピー</button>
+    <button class="btn btn-warn" onclick="clearForm('checklist')">クリア</button>
+  </div>
+</div>
+
+<div class="overall-progress">
+  <div class="overall-progress-row">
+    <strong>全体進捗</strong>
+    <span class="pct" id="overall-progress">0 / 0 (0%)</span>
+  </div>
+  <div class="overall-progress-bar"><div id="overall-progress-fill"></div></div>
+</div>
+
+<form data-form="checklist" onsubmit="return false;">
+
+  <div class="phase-block">
+    <div class="phase-head">
+      <span class="phase-num">Phase 0</span>
+      <h4>受電・第一報（0〜10分）</h4>
+      <span class="progress-text"><span data-phase-count>0/8</span></span>
+      <div class="progress-bar"><div class="progress-bar-fill" data-phase-fill></div></div>
+    </div>
+    <div class="phase-body">
+      <label class="field-check"><input type="checkbox" name="p0-1"> 電話応対係が 01 受電シートを使い聞き取り</label>
+      <label class="field-check"><input type="checkbox" name="p0-2"> 冒頭 3 項目（所属 / 氏名 / 折り返し連絡先）を取得</label>
+      <label class="field-check"><input type="checkbox" name="p0-3"> パターン（A/B/C/D）を判定</label>
+      <label class="field-check"><input type="checkbox" name="p0-4"> 受電時刻を記録</label>
+      <label class="field-check"><input type="checkbox" name="p0-5"> 相手に「端末に触らない / 電源を切らない」を依頼</label>
+      <label class="field-check"><input type="checkbox" name="p0-6"> 折り返し時刻を相手に約束（10 分以内）</label>
+      <label class="field-check"><input type="checkbox" name="p0-7"> 記録係がホワイトボードに時系列で記録開始</label>
+      <label class="field-check"><input type="checkbox" name="p0-8"> 受電シートを技術係・指揮係にも共有</label>
+    </div>
+  </div>
+
+  <div class="phase-block">
+    <div class="phase-head">
+      <span class="phase-num">Phase 1</span>
+      <h4>一次判定（10〜30分）</h4>
+      <span class="progress-text"><span data-phase-count>0/6</span></span>
+      <div class="progress-bar"><div class="progress-bar-fill" data-phase-fill></div></div>
+    </div>
+    <div class="phase-body">
+      <label class="field-check"><input type="checkbox" name="p1-1"> 02 引き継ぎテンプレで事実と申告を分離整理</label>
+      <label class="field-check"><input type="checkbox" name="p1-2"> 緊急度・優先度を判定（指揮係 + 技術 1 名で合意）</label>
+      <label class="field-check"><input type="checkbox" name="p1-3"> 対象システム / セグメント / ユーザを特定</label>
+      <label class="field-check"><input type="checkbox" name="p1-4"> 技術担当に依頼事項を明記（抽象指示は NG）</label>
+      <label class="field-check"><input type="checkbox" name="p1-5"> 顧客担当者への一次連絡（次回報告時刻含む）</label>
+      <label class="field-check"><input type="checkbox" name="p1-6"> チーム内の次回レビュー時刻決定（15〜30分後）</label>
+    </div>
+  </div>
+
+  <div class="phase-block">
+    <div class="phase-head">
+      <span class="phase-num">Phase 2</span>
+      <h4>封じ込め（拡大停止）— 復旧より先にやる</h4>
+      <span class="progress-text"><span data-phase-count>0/6</span></span>
+      <div class="progress-bar"><div class="progress-bar-fill" data-phase-fill></div></div>
+    </div>
+    <div class="phase-body">
+      <label class="field-check"><input type="checkbox" name="p2-1"> 03 シナリオ別プレイブックで封じ込め手順を確認</label>
+      <label class="field-check"><input type="checkbox" name="p2-2"> 封じ込め実施前に指揮係の承認を取得</label>
+      <label class="field-check"><input type="checkbox" name="p2-3"> 封じ込め実施時刻・実施内容を記録</label>
+      <label class="field-check"><input type="checkbox" name="p2-4"> 封じ込め後に効果を確認（拡大停止）</label>
+      <label class="field-check"><input type="checkbox" name="p2-5"> 顧客担当者に封じ込め完了を中間報告</label>
+      <label class="field-check"><input type="checkbox" name="p2-6"> バックアップ媒体・ログの保全（上書き防止）</label>
+    </div>
+  </div>
+
+  <div class="phase-block">
+    <div class="phase-head">
+      <span class="phase-num">Phase 3</span>
+      <h4>調査・原因特定</h4>
+      <span class="progress-text"><span data-phase-count>0/7</span></span>
+      <div class="progress-bar"><div class="progress-bar-fill" data-phase-fill></div></div>
+    </div>
+    <div class="phase-body">
+      <label class="field-check"><input type="checkbox" name="p3-1"> 侵入経路・原因の仮説を立てる（複数候補で OK）</label>
+      <label class="field-check"><input type="checkbox" name="p3-2"> ログ・証跡を収集（時刻・ホスト・取得者を明記）</label>
+      <label class="field-check"><input type="checkbox" name="p3-3"> 仮説を 1 つずつ検証（裏取り前の断定は禁止）</label>
+      <label class="field-check"><input type="checkbox" name="p3-4"> 他システム / 他ユーザへの影響有無を確認</label>
+      <label class="field-check"><input type="checkbox" name="p3-5"> 陽動の可能性（同時刻の別インシデント）を確認</label>
+      <label class="field-check"><input type="checkbox" name="p3-6"> 調査結果を 02 の調査結果記入欄に記録</label>
+      <label class="field-check"><input type="checkbox" name="p3-7"> 原因特定後、指揮係に報告して復旧判断へ</label>
+    </div>
+  </div>
+
+  <div class="phase-block">
+    <div class="phase-head">
+      <span class="phase-num">Phase 4</span>
+      <h4>復旧</h4>
+      <span class="progress-text"><span data-phase-count>0/7</span></span>
+      <div class="progress-bar"><div class="progress-bar-fill" data-phase-fill></div></div>
+    </div>
+    <div class="phase-body">
+      <label class="field-check"><input type="checkbox" name="p4-1"> 復旧方針を指揮係が承認</label>
+      <label class="field-check"><input type="checkbox" name="p4-2"> 復旧前に封じ込めが維持されていることを再確認</label>
+      <label class="field-check"><input type="checkbox" name="p4-3"> バックアップから戻す前に脆弱性対応を済ませる</label>
+      <label class="field-check"><input type="checkbox" name="p4-4"> 復旧手順を記録（いつ / 誰が / 何を）</label>
+      <label class="field-check"><input type="checkbox" name="p4-5"> 復旧後、正常稼働を確認（サービス動作・ログ健全性）</label>
+      <label class="field-check"><input type="checkbox" name="p4-6"> 監視を強化（再感染・再攻撃に備える）</label>
+      <label class="field-check"><input type="checkbox" name="p4-7"> 顧客担当者に復旧完了を伝達（完全 / 一次対応 を明示）</label>
+    </div>
+  </div>
+
+  <div class="phase-block">
+    <div class="phase-head">
+      <span class="phase-num">Phase 5</span>
+      <h4>完了報告</h4>
+      <span class="progress-text"><span data-phase-count>0/6</span></span>
+      <div class="progress-bar"><div class="progress-bar-fill" data-phase-fill></div></div>
+    </div>
+    <div class="phase-body">
+      <label class="field-check"><input type="checkbox" name="p5-1"> 04 完了報告テンプレの完了判定チェックリストを確認</label>
+      <label class="field-check"><input type="checkbox" name="p5-2"> 相手別に適切なテンプレを選ぶ（経営層 / 担当者 / ユーザ / 外部）</label>
+      <label class="field-check"><input type="checkbox" name="p5-3"> 時系列・影響範囲・原因・今後 を明記</label>
+      <label class="field-check"><input type="checkbox" name="p5-4"> 電話連絡後、正式記録としてメールを送る（必要時）</label>
+      <label class="field-check"><input type="checkbox" name="p5-5"> 連絡時刻を記録</label>
+      <label class="field-check"><input type="checkbox" name="p5-6"> 未解決の継続タスクを明示（完了と未完了を混同しない）</label>
+    </div>
+  </div>
+
+  <div class="phase-block">
+    <div class="phase-head">
+      <span class="phase-num">Phase 6</span>
+      <h4>振り返り（対応終了後）</h4>
+      <span class="progress-text"><span data-phase-count>0/5</span></span>
+      <div class="progress-bar"><div class="progress-bar-fill" data-phase-fill></div></div>
+    </div>
+    <div class="phase-body">
+      <label class="field-check"><input type="checkbox" name="p6-1"> 時系列ログを整理（対応記録ドキュメント化）</label>
+      <label class="field-check"><input type="checkbox" name="p6-2"> KPT でチーム振り返り（Keep / Problem / Try）</label>
+      <label class="field-check"><input type="checkbox" name="p6-3"> 再発防止の技術タスクをリスト化</label>
+      <label class="field-check"><input type="checkbox" name="p6-4"> 対応マニュアル・プレイブックの改善点を記録</label>
+      <label class="field-check"><input type="checkbox" name="p6-5"> 顧客向け最終報告書の作成（必要時）</label>
+    </div>
+  </div>
+
+</form>
+</div>
+</section>
+
+
+<!-- ═════════════════════ OUTPUT PANEL (slide-up) ═════════════════════ -->
+<div id="output-panel" class="output-panel">
+  <div class="output-head">
+    <h3 id="output-title">Output</h3>
+    <div style="display:flex; gap:0.4rem;">
+      <button id="output-copy-btn" class="btn btn-primary" onclick="copyOutputText()">再コピー</button>
+      <button class="btn" onclick="closeOutput()">閉じる</button>
+    </div>
+  </div>
+  <div class="output-body"><pre id="output-text"></pre></div>
+</div>
+
+
+<script>
+/* ─────────── Tab switching ─────────── */
+const tabBtns = document.querySelectorAll('.tab-btn');
+const tabPanes = document.querySelectorAll('.tab-pane');
+
+function activateTab(id) {
+  tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  tabPanes.forEach(p => p.classList.toggle('active', p.dataset.tabContent === id));
+  history.replaceState(null, '', '#tab-' + id);
+}
+tabBtns.forEach(btn => btn.addEventListener('click', () => activateTab(btn.dataset.tab)));
+
+const hash = location.hash.slice(1);
+if (hash.startsWith('tab-')) activateTab(hash.slice(4));
+
+/* ─────────── TOC scrollspy (spec tab) ─────────── */
+const tocLinks = document.querySelectorAll('.toc a');
+const tocMap = new Map();
+tocLinks.forEach(a => {
+  const id = a.getAttribute('href').slice(1);
+  const target = document.getElementById(id);
+  if (target) tocMap.set(target, a);
+});
+const tocObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const link = tocMap.get(entry.target);
+    if (!link) return;
+    if (entry.isIntersecting) {
+      tocLinks.forEach(l => l.classList.remove('active'));
+      link.classList.add('active');
+    }
+  });
+}, { rootMargin: '-25% 0px -65% 0px' });
+tocMap.forEach((_, target) => tocObserver.observe(target));
+
+/* ─────────── Form persistence (localStorage per incident-id) ─────────── */
+const FORM_KEY_PREFIX = 'shirahama-form-';
+
+function getIncidentId() {
+  return (document.getElementById('incident-id-input')?.value || 'default').trim() || 'default';
+}
+
+function getFormState(formEl) {
+  const data = {};
+  formEl.querySelectorAll('input, textarea, select').forEach(el => {
+    const key = el.name || el.id;
+    if (!key) return;
+    if (el.type === 'checkbox' || el.type === 'radio') data[key] = el.checked;
+    else data[key] = el.value;
+  });
+  return data;
+}
+
+function setFormState(formEl, data) {
+  if (!data) return;
+  formEl.querySelectorAll('input, textarea, select').forEach(el => {
+    const key = el.name || el.id;
+    if (!key || data[key] === undefined) return;
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!data[key];
+    else el.value = data[key] ?? '';
+  });
+}
+
+function saveForm(formEl, key) {
+  const id = getIncidentId();
+  localStorage.setItem(FORM_KEY_PREFIX + key + '::' + id, JSON.stringify(getFormState(formEl)));
+}
+
+function loadForm(formEl, key) {
+  // first reset
+  formEl.querySelectorAll('input, textarea, select').forEach(el => {
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = false;
+    else if (el.id !== 'i-time') el.value = '';
+  });
+  const id = getIncidentId();
+  const stored = localStorage.getItem(FORM_KEY_PREFIX + key + '::' + id);
+  if (stored) {
+    try { setFormState(formEl, JSON.parse(stored)); } catch (e) { console.error(e); }
+  }
+}
+
+function clearForm(key) {
+  if (!confirm(key + ' のフォーム内容をクリアしますか?')) return;
+  const formEl = document.querySelector('[data-form="' + key + '"]');
+  formEl.querySelectorAll('input, textarea, select').forEach(el => {
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = false;
+    else el.value = '';
+  });
+  if (key === 'intake') {
+    document.querySelectorAll('.pattern-card').forEach(c => c.classList.remove('selected'));
+    document.querySelectorAll('.pattern-section').forEach(s => s.style.display = 'none');
+  }
+  saveForm(formEl, key);
+  if (key === 'checklist') updateProgress();
+}
+
+document.querySelectorAll('[data-form]').forEach(form => {
+  const key = form.dataset.form;
+  form.addEventListener('input', () => { saveForm(form, key); if (key === 'checklist') updateProgress(); });
+  form.addEventListener('change', () => { saveForm(form, key); if (key === 'checklist') updateProgress(); });
+});
+
+/* ─────────── Pattern selector (intake) ─────────── */
+function applyPattern(p) {
+  document.querySelectorAll('.pattern-card').forEach(c => c.classList.toggle('selected', c.dataset.pattern === p));
+  document.querySelectorAll('.pattern-section').forEach(s => {
+    s.style.display = (s.dataset.pattern === p) ? 'block' : 'none';
+  });
+  const inp = document.getElementById('pattern-input');
+  if (inp) inp.value = p;
+}
+document.querySelectorAll('.pattern-card').forEach(card => {
+  card.addEventListener('click', () => {
+    applyPattern(card.dataset.pattern);
+    saveForm(document.querySelector('[data-form="intake"]'), 'intake');
+  });
+});
+
+/* ─────────── Reload all forms when incident-id changes ─────────── */
+function reloadAllForms() {
+  document.querySelectorAll('[data-form]').forEach(form => loadForm(form, form.dataset.form));
+  const patternVal = document.getElementById('pattern-input')?.value;
+  if (patternVal) applyPattern(patternVal);
+  else {
+    document.querySelectorAll('.pattern-card').forEach(c => c.classList.remove('selected'));
+    document.querySelectorAll('.pattern-section').forEach(s => s.style.display = 'none');
+  }
+  // Re-apply verdict UI for review tab
+  if (typeof updateVerdictUI === 'function') updateVerdictUI();
+  updateProgress();
+}
+document.getElementById('incident-id-input')?.addEventListener('change', reloadAllForms);
+
+/* ─────────── Checklist progress ─────────── */
+function updateProgress() {
+  let total = 0, done = 0;
+  document.querySelectorAll('.phase-block').forEach(block => {
+    const checks = block.querySelectorAll('input[type="checkbox"]');
+    const checked = block.querySelectorAll('input[type="checkbox"]:checked');
+    block.querySelector('[data-phase-count]').textContent = checked.length + '/' + checks.length;
+    const pct = checks.length ? (checked.length / checks.length * 100) : 0;
+    block.querySelector('[data-phase-fill]').style.width = pct + '%';
+    block.querySelector('.phase-head').classList.toggle('complete', pct === 100 && checks.length > 0);
+    total += checks.length;
+    done += checked.length;
+  });
+  const pct = total ? Math.round(done / total * 100) : 0;
+  const overall = document.getElementById('overall-progress');
+  if (overall) overall.textContent = done + ' / ' + total + ' (' + pct + '%)';
+  const fill = document.getElementById('overall-progress-fill');
+  if (fill) {
+    fill.style.width = pct + '%';
+    fill.style.background = pct === 100 ? 'var(--good)' : 'var(--link)';
+  }
+}
+
+/* ─────────── Output panel ─────────── */
+function showOutput(title, text) {
+  document.getElementById('output-title').textContent = title;
+  document.getElementById('output-text').textContent = text;
+  document.getElementById('output-panel').classList.add('open');
+}
+function closeOutput() {
+  document.getElementById('output-panel').classList.remove('open');
+}
+function copyOutputText() {
+  const t = document.getElementById('output-text').textContent;
+  navigator.clipboard.writeText(t);
+  const btn = document.getElementById('output-copy-btn');
+  const orig = btn.textContent;
+  btn.textContent = 'コピー済';
+  setTimeout(() => btn.textContent = orig, 1200);
+}
+
+/* ─────────── Text generators ─────────── */
+function fmt(v, fallback) {
+  fallback = fallback || '（未記入）';
+  return (v && String(v).trim()) ? v : fallback;
+}
+
+function copyIntakeText() {
+  const f = getFormState(document.querySelector('[data-form="intake"]'));
+  const id = getIncidentId();
+  const pattern = f['pattern'] || 'A';
+  const patternName = {
+    A: 'A. ユーザ苦情・問い合わせ',
+    B: 'B. 顧客担当者からの報告・通報',
+    C: 'C. 経営層からの苦情・要求',
+    D: 'D. 外部第三者からの通報',
+  }[pattern];
+
+  let t = '# 受電ヒアリング [' + id + ']\n\n';
+  t += '受電時刻: ' + fmt(f['time']) + '\n';
+  t += '所属: ' + fmt(f['affil']) + '\n';
+  t += '氏名: ' + fmt(f['name']) + '\n';
+  t += '折り返し: ' + fmt(f['callback']) + '\n';
+  t += '対応者: ' + fmt(f['operator']) + '\n';
+  t += '\n## パターン: ' + patternName + '\n\n';
+
+  if (pattern === 'A') {
+    t += '1. 対象端末・サービス: ' + fmt(f['a-target']) + '\n';
+    t += '2. 発生時刻: ' + fmt(f['a-onset']) + '\n';
+    t += '3. 症状: ' + fmt(f['a-symptom']) + '\n';
+    t += '4. 直前の操作: ' + fmt(f['a-precede']) + '\n';
+    t += '5. 他に同様事象: ' + fmt(f['a-others']) + '\n';
+    t += '6. 現在の操作状況: ' + fmt(f['a-curr-op']) + '\n';
+    t += '7. 電源状態: ' + fmt(f['a-power']) + '\n';
+    t += '\n## 相手への依頼\n';
+    t += '[' + (f['a-req-no-touch']?'x':' ') + '] 端末に触らない\n';
+    t += '[' + (f['a-req-no-power-off']?'x':' ') + '] 電源を切らない・再起動しない\n';
+    t += '[' + (f['a-req-no-cable']?'x':' ') + '] ネットワークケーブルを抜かない\n';
+    t += '[' + (f['a-req-photo']?'x':' ') + '] 画面の写真を撮影してもらう\n';
+    t += '\n次アクション約束時刻: ' + fmt(f['a-next-time']) + '\n';
+  } else if (pattern === 'B') {
+    t += '1. 観測システム: ' + fmt(f['b-system']) + '\n';
+    t += '2. 観測値: ' + fmt(f['b-observation']) + '\n';
+    t += '3. 観測時刻と推移: ' + fmt(f['b-timeline']) + '\n';
+    t += '4. 顧客側で実施済み: ' + fmt(f['b-actions-done']) + '\n';
+    t += '5. 影響範囲: ' + fmt(f['b-impact']) + '\n';
+    t += '6. 今後の窓口: ' + fmt(f['b-window']) + '\n';
+    t += '\n次アクション約束時刻: ' + fmt(f['b-next-time']) + '\n';
+  } else if (pattern === 'C') {
+    t += '相手が把握している事実: ' + fmt(f['c-known']) + '\n';
+    t += '求められている判断: ' + fmt(f['c-decision-needed']) + '\n';
+    t += '合意した報告頻度: ' + fmt(f['c-freq']) + '\n';
+    t += '次回連絡時刻: ' + fmt(f['c-next-time']) + '\n';
+    t += '\n## 経営層に伝える 4 点\n';
+    t += '【事実】 ' + fmt(f['c-fact']) + '\n';
+    t += '【対応中】 ' + fmt(f['c-doing']) + '\n';
+    t += '【見通し】 ' + fmt(f['c-eta']) + '\n';
+    t += '【判断事項】 ' + fmt(f['c-decision']) + '\n';
+  } else if (pattern === 'D') {
+    t += '1. 弊社関与の特定根拠: ' + fmt(f['d-evidence-source']) + '\n';
+    t += '2. 発生時刻・頻度・規模: ' + fmt(f['d-when']) + '\n';
+    t += '3. 提供された証拠: ' + fmt(f['d-evidence']) + '\n';
+    t += '信憑性評価: ' + fmt(f['d-credibility']) + '\n';
+    if (f['d-credibility'] === '低') t += '低の理由: ' + fmt(f['d-low-reason']) + '\n';
+    t += '\n次アクション約束時刻: ' + fmt(f['d-next-time']) + '\n';
+  }
+
+  navigator.clipboard.writeText(t);
+  showOutput('受電シート [' + id + ']', t);
+}
+
+function copyHandoffText() {
+  const f = getFormState(document.querySelector('[data-form="handoff"]'));
+  let t = '# 引き継ぎサマリ\n\n';
+  t += '事案ID: ' + fmt(f['h-id']) + '\n';
+  t += '受電時刻: ' + fmt(f['h-recv-time']) + '\n';
+  t += '報告者: ' + fmt(f['h-reporter']) + '\n';
+  t += '発生時刻 (申告): ' + fmt(f['h-occur-time']) + '\n';
+  t += '対象: ' + fmt(f['h-target']) + '\n';
+  t += '想定影響: ' + fmt(f['h-impact']) + '\n';
+  t += '緊急度: ' + fmt(f['h-urgency']) + ' / 優先度: ' + fmt(f['h-priority']) + '\n';
+  t += '\n## 確認済み事実\n' + fmt(f['h-fact']) + '\n';
+  t += '\n## 相手の申告（未確認）\n' + fmt(f['h-claim']) + '\n';
+  t += '\n## 不明・未取得\n' + fmt(f['h-unknown']) + '\n';
+  t += '\n## 依頼事項\n### NW管理者向け\n';
+  if (f['h-nw-traffic']) t += '- ポート / VLAN トラフィック確認\n';
+  if (f['h-nw-out']) t += '- 外向き通信 (未知 IP・不審 DNS) 調査\n';
+  if (f['h-nw-isolate']) t += '- 該当端末を隔離 VLAN (指揮承認後)\n';
+  if (f['h-nw-fw']) t += '- FW/UTM ログで当該 IP 通信履歴抽出 24h\n';
+  if (f['h-nw-vpn']) t += '- VPN 外部ユーザに異常がないか確認\n';
+  t += '### サーバ管理者向け\n';
+  if (f['h-sv-log']) t += '- ログ確認 (secure / messages / アプリ)\n';
+  if (f['h-sv-proc']) t += '- 不審な外部通信プロセス確認\n';
+  if (f['h-sv-auth']) t += '- 認証ログで異常ログイン有無\n';
+  if (f['h-sv-web']) t += '- Web アクセスログで不審リクエスト 24h\n';
+  if (f['h-sv-tamper']) t += '- ファイル改ざん確認 (Web ルート / 設定)\n';
+  if (f['h-sv-restart']) t += '- サービス停止/再起動の要否判断 (指揮承認後)\n';
+  if (f['h-other-req']) t += '\n### その他\n' + f['h-other-req'] + '\n';
+  navigator.clipboard.writeText(t);
+  showOutput('引き継ぎ', t);
+}
+
+function copyHandoffShort() {
+  const f = getFormState(document.querySelector('[data-form="handoff"]'));
+  const id = fmt(f['h-id'], 'INC-???');
+  const recv = fmt(f['h-recv-time'], '?');
+  const target = fmt(f['h-target'], '?');
+  const urg = f['h-urgency'];
+  const flag = urg === '高' ? '[HIGH]' : urg === '中' ? '[MED]' : urg === '低' ? '[LOW]' : '[?]';
+  let t = flag + ' [' + id + '] 受電 ' + recv + '\n';
+  t += '対象: ' + target + '\n';
+  t += '症状/事実: ' + (fmt(f['h-fact'], '(調査中)').split('\n')[0]) + '\n';
+  t += '影響: ' + fmt(f['h-impact']) + ' / 緊急 ' + fmt(f['h-urgency']) + ' / 優先 ' + fmt(f['h-priority']) + '\n';
+  t += '状態: NW=未着手 / サーバ=未着手 / 判断依頼: ?\n';
+  navigator.clipboard.writeText(t);
+  showOutput('引き継ぎ短縮版 (チャット用)', t);
+}
+
+function copyIncidentCmd() {
+  const f = getFormState(document.querySelector('[data-form="handoff"]'));
+  const win = fmt(f['h-window'], '00:00-00:00');
+  const host = fmt(f['h-host'], 'victor');
+  const cmd = '/incident ' + win + ' ' + host;
+  navigator.clipboard.writeText(cmd);
+  const note = '\n\n# 注: 時間窓は UTC。JST から渡す場合は -9h 変換済か確認。\n# 例: JST 23:30 → UTC 14:30';
+  showOutput('Claude Code 投入用コマンド', cmd + note);
+}
+
+function copyChecklistStatus() {
+  let t = '# Phase 進捗 [' + getIncidentId() + ']\n\n';
+  document.querySelectorAll('.phase-block').forEach(block => {
+    const head = block.querySelector('h4').textContent.trim();
+    const num = block.querySelector('.phase-num').textContent.trim();
+    const checks = block.querySelectorAll('input[type="checkbox"]');
+    const checked = block.querySelectorAll('input[type="checkbox"]:checked');
+    t += '## ' + num + ': ' + head + ' — ' + checked.length + '/' + checks.length + '\n';
+    checks.forEach(cb => {
+      const label = cb.parentElement.textContent.trim();
+      t += '[' + (cb.checked?'x':' ') + '] ' + label + '\n';
+    });
+    t += '\n';
+  });
+  navigator.clipboard.writeText(t);
+  showOutput('Phase 進捗', t);
+}
+
+/* ─────────── Review tab: intake pull + verdict UI ─────────── */
+function pullIntakeSummary() {
+  const f = getFormState(document.querySelector('[data-form="intake"]'));
+  const id = getIncidentId();
+  const pattern = f['pattern'] || '?';
+  const patternName = {
+    A: 'A. ユーザ苦情', B: 'B. 顧客担当者報告',
+    C: 'C. 経営層苦情', D: 'D. 外部第三者通報', '?': '未判定',
+  }[pattern];
+
+  let s = '【受電サマリ】 [' + id + ']\n';
+  s += '受電時刻: ' + fmt(f['time']) + '\n';
+  s += '所属: ' + fmt(f['affil']) + ' / 氏名: ' + fmt(f['name']) + '\n';
+  s += '折り返し: ' + fmt(f['callback']) + '\n';
+  s += 'パターン: ' + patternName + '\n';
+
+  if (pattern === 'A') {
+    s += '対象: ' + fmt(f['a-target']) + '\n';
+    s += '症状: ' + fmt(f['a-symptom']) + '\n';
+    s += '発生時刻: ' + fmt(f['a-onset']) + '\n';
+    s += '直前操作: ' + fmt(f['a-precede']) + '\n';
+    s += '他に同様: ' + fmt(f['a-others']) + '\n';
+  } else if (pattern === 'B') {
+    s += 'システム: ' + fmt(f['b-system']) + '\n';
+    s += '観測値: ' + fmt(f['b-observation']) + '\n';
+    s += '時刻と推移: ' + fmt(f['b-timeline']) + '\n';
+    s += '影響範囲: ' + fmt(f['b-impact']) + '\n';
+  } else if (pattern === 'C') {
+    s += '把握事実: ' + fmt(f['c-known']) + '\n';
+    s += '求める判断: ' + fmt(f['c-decision-needed']) + '\n';
+  } else if (pattern === 'D') {
+    s += '関与の特定根拠: ' + fmt(f['d-evidence-source']) + '\n';
+    s += '時刻・規模: ' + fmt(f['d-when']) + '\n';
+    s += '信憑性: ' + fmt(f['d-credibility']) + '\n';
+  }
+
+  const ta = document.querySelector('textarea[name="r-intake-summary"]');
+  if (ta) {
+    ta.value = s;
+    saveForm(document.querySelector('[data-form="review"]'), 'review');
+  }
+  // brief flash
+  if (ta) {
+    ta.style.background = 'var(--bg-callout)';
+    setTimeout(() => ta.style.background = '', 600);
+  }
+}
+
+function updateVerdictUI() {
+  const verdict = document.querySelector('input[name="r-verdict"]:checked')?.value;
+  document.querySelectorAll('.verdict-section').forEach(s => {
+    s.style.display = (s.dataset.verdict === verdict) ? 'block' : 'none';
+  });
+}
+
+function copyReviewText() {
+  const f = getFormState(document.querySelector('[data-form="review"]'));
+  const id = getIncidentId();
+  const verdict = f['r-verdict'] || '(未判定)';
+
+  let t = '# 事象判定 [' + id + ']\n';
+  t += '判定確定時刻: ' + fmt(f['r-decided-at']) + '\n';
+  t += '合議参加者: ' + fmt(f['r-attendees']) + '\n';
+  t += '\n## ① 受電サマリ\n' + fmt(f['r-intake-summary']) + '\n';
+  t += '\n## ② ログ分析結果\n';
+  t += '### analyzer §3\n' + fmt(f['r-analyzer']) + '\n';
+  t += '### Mock + Claude §4\n' + fmt(f['r-judgment']) + '\n';
+  t += '### SOC summary §6\n' + fmt(f['r-soc']) + '\n';
+  t += '### 顧客追加質問 §7\n' + fmt(f['r-questions']) + '\n';
+  t += '\n## ③ 突合\n';
+  t += '一致: ' + fmt(f['r-match']) + '\n';
+  t += '齟齬: ' + fmt(f['r-mismatch']) + '\n';
+  t += '不明: ' + fmt(f['r-unknown']) + '\n';
+  t += '\n## ④ 判定\n';
+  t += '★ ' + verdict + '\n';
+  t += '根拠: ' + fmt(f['r-reason']) + '\n';
+
+  if (verdict === 'A-対応不要') {
+    t += '\n## A. 対応不要 — 回答\n';
+    t += '相手: ' + fmt(f['r-a-target']) + '\n';
+    t += '回答: ' + fmt(f['r-a-reply']) + '\n';
+    t += '回答時刻: ' + fmt(f['r-a-time']) + '\n';
+  } else if (verdict === 'B-情報提供のみ') {
+    t += '\n## B. 情報提供のみ — 注意喚起\n';
+    t += '対象: ' + fmt(f['r-b-target']) + '\n';
+    t += '本文:\n' + fmt(f['r-b-alert']) + '\n';
+    t += '通知方法: ' + fmt(f['r-b-channel']) + '\n';
+  } else if (verdict === 'C-追加情報待ち') {
+    t += '\n## C. 追加情報待ち\n';
+    t += '質問:\n' + fmt(f['r-c-questions']) + '\n';
+    t += '再判定締切: ' + fmt(f['r-c-deadline']) + '\n';
+  } else if (verdict === 'D-対応必要') {
+    t += '\n## D. 対応必要 — レスポンス計画\n';
+    t += '事象分類: ' + fmt(f['r-d-category']) + '\n';
+    t += '該当 playbook: ' + fmt(f['r-d-playbook']) + '\n';
+    t += '体制: ' + fmt(f['r-d-capability']) + '\n';
+    t += '封じ込め:\n' + fmt(f['r-d-containment']) + '\n';
+    t += '復旧:\n' + fmt(f['r-d-recovery']) + '\n';
+    t += '解決確認: ' + fmt(f['r-d-verify']) + '\n';
+    t += '中間連絡: ' + fmt(f['r-d-interim']) + '\n';
+  }
+  t += '\n次回連絡 / 再判定: ' + fmt(f['r-next-time']) + '\n';
+
+  navigator.clipboard.writeText(t);
+  showOutput('判定 [' + id + '] — ' + verdict, t);
+}
+
+function copyReplyTemplate() {
+  const f = getFormState(document.querySelector('[data-form="review"]'));
+  const verdict = f['r-verdict'];
+  if (!verdict) {
+    alert('まず ④ で判定を選択してください。');
+    return;
+  }
+
+  let t = '';
+  if (verdict === 'A-対応不要') {
+    t = '【回答テンプレ — 対応不要】\n\n';
+    t += 'お世話になっております、管理会社の' + fmt(f['operator'] || '〇〇') + 'です。\n';
+    t += '先ほどご連絡いただいた件、確認しましたのでご報告します。\n\n';
+    t += '【確認結果】\n' + fmt(f['r-reason'], '（根拠を記入）') + '\n\n';
+    t += '【ご回答】\n' + fmt(f['r-a-reply'], '現時点で弊社対応の対象ではないと判断いたしました。') + '\n\n';
+    t += 'もし症状に変化がございましたら、お手数ですが再度ご連絡ください。';
+  } else if (verdict === 'B-情報提供のみ') {
+    t = '【注意喚起テンプレ】\n\n';
+    t += '宛先: ' + fmt(f['r-b-target']) + '\n';
+    t += '通知方法: ' + fmt(f['r-b-channel']) + '\n\n';
+    t += fmt(f['r-b-alert']) + '\n';
+  } else if (verdict === 'C-追加情報待ち') {
+    t = '【追加聞き取り — 受電係宛】\n\n';
+    t += '事案: ' + getIncidentId() + '\n';
+    t += '締切: ' + fmt(f['r-c-deadline']) + '\n\n';
+    t += '以下を顧客に電話で確認してください:\n\n';
+    t += fmt(f['r-c-questions']) + '\n\n';
+    t += '聞き取り後、判定タブに戻って ④ を再選択してください。';
+  } else if (verdict === 'D-対応必要') {
+    t = '【中間連絡テンプレ — 顧客向け】\n\n';
+    t += 'お世話になっております、管理会社の' + fmt(f['operator'] || '〇〇') + 'です。\n';
+    t += '先ほどご連絡いただいた ' + fmt(f['r-d-category']) + ' の件、状況をご報告します。\n\n';
+    t += '【現状】\n' + fmt(f['r-soc'], '（観測した攻撃の概要）') + '\n\n';
+    t += '【対応中】\n' + fmt(f['r-d-containment'], '（封じ込め中）') + '\n\n';
+    t += '【見通し】\n' + fmt(f['r-d-interim']) + '\n\n';
+    t += '次回ご報告: ' + fmt(f['r-next-time']);
+  }
+
+  navigator.clipboard.writeText(t);
+  showOutput('回答 / 連絡テンプレ — ' + verdict, t);
+}
+
+/* ─────────── Init ─────────── */
+window.addEventListener('DOMContentLoaded', () => {
+  // default time on intake
+  const iTime = document.getElementById('i-time');
+  if (iTime && !iTime.value) {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    iTime.value = now.toISOString().slice(0, 16);
+  }
+  // load all forms once
+  reloadAllForms();
+});
+</script>
+</body>
+</html>

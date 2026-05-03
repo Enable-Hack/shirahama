@@ -1,0 +1,29 @@
+# 攻撃ログ fixture
+# 各サブディレクトリ <id>_<name>/ に以下を置く:
+#   input.log         — analyzer に投入する攻撃含みログ
+#   expected.json     — 期待される pattern_tag の配列
+#                       例: [{"pattern_tag": "rainloop/path-traversal", "severity": "high"}]
+#
+# 19_今後やること.md §4.1 の表に対応する 20 パターンを順次追加する。
+#
+# 想定構造:
+#   01_rainloop_traversal/
+#   02_wp_bruteforce/
+#   03_wp_webshell/
+#   04_wp_author_scan/
+#   05_xmlrpc_multicall/
+#   06_dns_unauthorized_update/
+#   07_dns_axfr/
+#   08_dns_amplification/
+#   09_mysql_x_external/
+#   10_syslog_spoofed/
+#   11_dhcp_rogue/
+#   12_ssh_bruteforce/
+#   13_pkexec_pwnkit/
+#   14_sudo_unauthorized/
+#   15_mail_spf_fail/
+#   16_mail_from_mismatch/
+#   17_mail_burst/
+#   18_http_flood/
+#   19_snmp_public_abuse/
+#   20_telnet_access/

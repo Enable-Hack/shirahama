@@ -129,8 +129,11 @@
     ]
   },
 
-  "_comment_env": "build mode を明示するための環境変数。Claude 自身がこの変数で動作モードを判定できるよう。",
+  "_comment_env": "build mode を明示するための環境変数。SSH_* は incident.md / check-*.md が ssh 接続先を切替えるのに使う。",
   "env": {
-    "SHIRAHAMA_MODE": "build"
+    "SHIRAHAMA_MODE": "build",
+    "SSH_VICTOR": "victor",
+    "SSH_BRAVO": "bravo",
+    "SHIRAHAMA_DIR": "/Users/ryu/Desktop/shirahama"
   }
 }

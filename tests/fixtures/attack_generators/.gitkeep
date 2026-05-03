@@ -1,0 +1,7 @@
+# 攻撃ログを再現可能に生成するスクリプト群
+# 1 攻撃 = 1 スクリプト の方針:
+#   gen_rainloop.py     -> 01_rainloop_traversal/input.log を生成
+#   gen_wp_brute.py     -> 02_wp_bruteforce/input.log を生成
+#   ...
+# Docker レベル 1 のデモ環境（19_今後やること.md §5.1）の attacker コンテナから
+# 実際に攻撃を流して取得することもできるが、CI で再現可能にするため擬似生成版も持つ。
