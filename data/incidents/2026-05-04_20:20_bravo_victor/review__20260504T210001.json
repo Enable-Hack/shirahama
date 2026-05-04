@@ -1,0 +1,102 @@
+{
+  "skill": "review",
+  "incident_id": "2026-05-04_20:20_bravo_victor",
+  "timestamp": "2026-05-04T21:02:00+09:00",
+  "actor": "ai_auto",
+  "inputs": {
+    "hearing_path": "~/Desktop/shirahama_test.md",
+    "incident_window": "20:20-20:50",
+    "host": "bravo_victor",
+    "checks_consumed": []
+  },
+  "outputs": {
+    "comparison": [
+      {
+        "axis": "攻撃元 IP",
+        "customer": "161.33.12.212 (前回確認済み攻撃 VM)",
+        "log": "161.33.12.212 — 全 2151 req がこの IP",
+        "verdict": "match"
+      },
+      {
+        "axis": "影響サービス",
+        "customer": "Web (wp-login.php) + Mail (dovecot IMAP)",
+        "log": "Web (/ への HTTP flood) + Mail (SMTP AUTH × 15)",
+        "verdict": "match"
+      },
+      {
+        "axis": "時間窓",
+        "customer": "前回: 5/2 14:37 UTC (20 秒バースト)",
+        "log": "今回: 5/4 20:23 / 20:40 JST (2 波)",
+        "verdict": "partial",
+        "note": "別日程 — 同 IP による継続攻撃、2 日インターバル"
+      },
+      {
+        "axis": "攻撃規模",
+        "customer": "前回: WP brute 20 POST + IMAP 5 試行",
+        "log": "今回: HTTP flood 2,151 req + SMTP AUTH 15 件",
+        "verdict": "mismatch",
+        "note": "100 倍超にエスカレーション。単発 brute → 大規模 flood への戦術変化"
+      },
+      {
+        "axis": "突破ステータス",
+        "customer": "前回: 全未遂 (WP/IMAP/SSH とも fail)",
+        "log": "今回: SMTP AUTH 成功形跡なし、200 は / のみ",
+        "verdict": "match"
+      },
+      {
+        "axis": "obuchi IMAP 試行",
+        "customer": "前回 IMAP で admin/manage/root/obuchi/test を試行",
+        "log": "今回: 同一 IP が SMTP AUTH 15 件 (試行 ID 詳細は syslog 窓外)",
+        "verdict": "partial",
+        "note": "前回の知識を持つ同一攻撃者と推定"
+      },
+      {
+        "axis": "victor named service",
+        "customer": "前回ドラフトに記載なし (既侵害認識なし)",
+        "log": "preflight で victor named INACTIVE 確認済み",
+        "verdict": "blind_spot",
+        "note": "DNS resolver 停止が顧客の認知外。攻撃起因の可能性"
+      },
+      {
+        "axis": "bravo 高負荷",
+        "customer": "前回: 言及なし",
+        "log": "preflight: load avg 7.19-7.82 / 2 core (threshold 6.0)",
+        "verdict": "blind_spot",
+        "note": "今回 HTTP flood 由来、顧客認知外"
+      }
+    ],
+    "judgment_recommendation": {
+      "primary": "D",
+      "confidence": 0.82,
+      "rationale": "🚨 不一致 1 件 (攻撃規模 100 倍エスカレーション) + 🚨 顧客盲点 2 件 (named停止 / bravo高負荷) — 継続攻撃で戦術変化、顧客が認知できていない侵害進行の可能性",
+      "alternative": "C",
+      "alt_condition": "victor named 停止の原因 (攻撃起因 vs 設定ミス) が確認できた場合"
+    },
+    "scope_proposal": {
+      "in_scope": [
+        "161.33.12.212 の rate-limit / block (前回 + 今回両方で攻撃元確定)",
+        "/check:check-imap-auth-exposure で SMTP AUTH 試行 ID 確認"
+      ],
+      "investigation_required": [
+        "victor named service 停止原因確認 (journalctl -u named --since 2026-05-04) — in_scope 昇格判定前"
+      ],
+      "out_of_scope_logged": [
+        "bravo: toor:x:0:0:Backdoor Root (ロック済み — 出題前提として存置)",
+        "victor: /home/obuchi 777 (authorized_keys 踏み台 — 出題前提として存置)",
+        "bravo: dovecot disable_plaintext_auth=no + ssl=no",
+        "bravo: PAM passdb (auth-system.conf.ext 有効)",
+        "bravo: BIND allow-transfer any / allow-update (AXFR 漏洩)"
+      ]
+    }
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "不一致 1 件 + 顧客盲点 2 件。同一 IP による継続攻撃 + 規模エスカレーション確認。判定 D 推奨 (信頼度 0.82)。before next: victor named 停止原因確認"
+  },
+  "next_skills": [
+    "/check:check-imap-auth-exposure",
+    "/check:check-known-attacker-ip (継続監視)",
+    "victor: journalctl -u named --since 2026-05-04",
+    "/playbook:phishing (SMTP AUTH 成功確定後)"
+  ]
+}

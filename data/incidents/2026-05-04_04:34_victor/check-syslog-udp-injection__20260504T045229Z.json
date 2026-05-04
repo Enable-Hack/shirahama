@@ -1,0 +1,38 @@
+{
+  "skill": "check-syslog-udp-injection",
+  "incident_id": "2026-05-04_04:34_victor",
+  "timestamp": "2026-05-04T04:52:29Z",
+  "actor": "ai_auto",
+  "inputs": {
+    "target_host": "both"
+  },
+  "outputs": {
+    "patterns_matched": [
+      {
+        "id": "UDP_LISTEN",
+        "label": "514/UDP listen",
+        "verdict": "✅ なし (victor/bravo とも imudp 無効 / not listening)"
+      },
+      {
+        "id": "HOSTNAME_ANOMALY",
+        "label": "ログ内 hostname 不整合",
+        "verdict": "✅ なし (shirahama / bravo のみ、3000 行異常 0 件)"
+      },
+      {
+        "id": "TIMESTAMP_REWIND",
+        "label": "タイムスタンプ逆行",
+        "verdict": "✅ なし"
+      }
+    ],
+    "evidence": [
+      "rsyslog: #module(load=\"imudp\") — コメントアウト済",
+      "ss -ulnp: 514/udp not listening (victor/bravo 両機)",
+      "bravo secure 3000 行: hostname anomalies=0"
+    ]
+  },
+  "verdict": {
+    "status": "✅",
+    "summary": "514/UDP syslog 注入なし。ログの信頼性は正常。後続 check 結果の信頼度を下げる必要はない。"
+  },
+  "next_skills": []
+}

@@ -13,7 +13,7 @@ import sys
 from datetime import datetime
 from typing import Optional
 
-from _common import emit, stream_lines
+from _common import emit, stream_lines, to_jst_iso
 
 
 SYSLOG_RE = re.compile(
@@ -38,7 +38,7 @@ DMARC_RE = re.compile(r'dmarc=(?P<dmarc>\w+)', re.IGNORECASE)
 def parse_syslog_ts(ts: str) -> Optional[str]:
     try:
         year = datetime.now().year
-        return datetime.strptime(f"{year} {ts}", "%Y %b %d %H:%M:%S").isoformat()
+        return to_jst_iso(datetime.strptime(f"{year} {ts}", "%Y %b %d %H:%M:%S"))
     except ValueError:
         return None
 

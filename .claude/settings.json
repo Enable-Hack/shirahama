@@ -3,6 +3,8 @@
   "_comment_purpose": "デモ環境 build phase 専用 settings。OCI 上に whiskey lab を再構築するために dnf install / systemctl / mysql DDL / Edit(/etc) 等を一時的に許可する。本番運用時は必ず settings.production.json をコピーして上書き戻すこと。",
   "_comment_mode": "BUILD MODE — DO NOT USE DURING TOURNAMENT. Restore production settings before 5/5 runtime.",
 
+  "model": "claude-opus-4-7",
+
   "permissions": {
     "_comment_deny": "build phase でも絶対に避けるべき破壊的操作のみ残す。誤って母艦やルートを破壊しないため。",
     "deny": [

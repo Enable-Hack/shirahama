@@ -1,0 +1,53 @@
+{
+  "skill": "incident",
+  "incident_id": "2026-05-04_05:00_bravo_victor",
+  "timestamp": "2026-05-04T07:20:00Z",
+  "actor": "ai_human",
+  "inputs": {
+    "window": "05:00-05:10",
+    "host": "victor bravo",
+    "logs_collected": ["access_log", "maillog", "secure", "auth.log", "named.log", "messages"]
+  },
+  "outputs": {
+    "analyzer_signals": [
+      {"pattern_tag": "waf_block",        "evidence": {"ip": "::1"},             "count": 1,  "severity": "low"},
+      {"pattern_tag": "path_scan",        "evidence": {"path": "/"},              "count": 109,"severity": "medium"},
+      {"pattern_tag": "mail/sasl-failed", "evidence": {"ip": "161.33.12.212"},   "count": 15, "severity": "medium"}
+    ],
+    "mock_patches": ["advisory:waf_block","rate_limit:path_scan","block:mail/sasl-failed"],
+    "claude_patches": [
+      "rate_limit:mail_brute_force_imap conf=0.95",
+      "rate_limit:mail_auth_failure_rate_limit conf=0.92",
+      "advisory:mail_load_spike_dos_indicator conf=0.78",
+      "advisory:mail_common_username_enumeration conf=0.85"
+    ],
+    "routing": {
+      "category": "phishing",
+      "playbook": "/playbook:phishing",
+      "always_first": ["check-known-attacker-ip", "check-syslog-udp-injection"],
+      "checks": ["check-imap-auth-exposure"]
+    },
+    "soc_summary": "IMAP/SMTP brute-force from 161.33.12.212 (15 SASL failures, 10 accounts incl. obuchi). Load average spiked 25→47, sendmail rejected connections 05:02-05:05 then self-recovered. bravo clean in window.",
+    "customer_questions": [
+      "05:00-05:15 JST 14:00-14:15頃 メール障害の報告はありましたか?",
+      "obuchiアカウント保有者は当該時刻にメールクライアント操作をしていましたか?",
+      "admin/root等への不審アクセスアラートを受け取っていませんか?",
+      "直近1週間でメール設定変更やアカウント追加はありましたか?",
+      "以前にも同様の症状が発生しましたか?",
+      "メールサーバへの一時アクセス制限を実施した場合の業務影響度は?"
+    ],
+    "preflight_anomalies_count": 1,
+    "attacker_ips": ["161.33.12.212"],
+    "sendmail_load_peak": 47
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "IMAP/SMTP brute-force (161.33.12.212) が victor のメールサービスを過負荷。obuchi を含む10ユーザへの認証試行あり。ログイン成功有無は /check:check-imap-auth-exposure で確認必須。"
+  },
+  "next_skills": [
+    "/check:check-known-attacker-ip",
+    "/check:check-syslog-udp-injection",
+    "/check:check-imap-auth-exposure",
+    "/playbook:phishing"
+  ]
+}

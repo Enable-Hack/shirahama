@@ -1,0 +1,69 @@
+{
+  "skill": "incident",
+  "incident_id": "2026-05-04_20:20_bravo_victor",
+  "timestamp": "2026-05-04T20:52:00+09:00",
+  "actor": "ai_human",
+  "inputs": {
+    "window": "20:20-20:50",
+    "hosts": ["bravo", "victor"],
+    "logs_collected": [
+      "victor_access.log (1909行)",
+      "victor_httpd_err.log (644行)",
+      "victor_secure.log (1500行→0行)",
+      "victor_maillog.log (109行→0行)",
+      "bravo_access.log (1677行)",
+      "bravo_named.log (0行)",
+      "bravo_auth.log (1500行→0行)",
+      "bravo_maillog.log (14行→0行)"
+    ]
+  },
+  "outputs": {
+    "analyzer_signals": [
+      {"pattern_tag": "waf_block",       "evidence": {"src_ip": "161.33.12.212"}, "count": 129,  "severity": "low"},
+      {"pattern_tag": "path_scan",       "evidence": {},                          "count": 2151, "severity": "medium"},
+      {"pattern_tag": "mail/sasl-failed","evidence": {"src_ip": "161.33.12.212"}, "count": 15,   "severity": "medium"}
+    ],
+    "mock_patches": [
+      {"action": "advisory",   "rule_id": "mock-unknown-waf_block",   "target": "/",         "confidence": 0.30, "rationale_ja": "waf_block を 129 件観測。手動レビュー推奨"},
+      {"action": "rate_limit", "rule_id": "mock-path-scan",           "target": "/",         "confidence": 0.65, "rationale_ja": "/ への 2151 件連続アクセス。rate_limit 提案"},
+      {"action": "block",      "rule_id": "mock-mail-sasl-failed",    "target": "mail/*",    "confidence": 0.80, "rationale_ja": "SMTP AUTH brute force 15 件。送信元 block 推奨。送信元=161.33.12.212"}
+    ],
+    "claude_patches": [],
+    "routing": {
+      "category": "phishing",
+      "playbook": "/playbook:phishing",
+      "always_first": ["check-known-attacker-ip", "check-syslog-udp-injection"],
+      "checks": ["check-known-attacker-ip", "check-syslog-udp-injection", "check-imap-auth-exposure"]
+    },
+    "attack_profile": {
+      "attacker_ip": "161.33.12.212",
+      "attack_vectors": [
+        "HTTP flood (2151 hits to / in 2 bursts: 20:23=1063, 20:40=1011)",
+        "SMTP AUTH brute force (15 sasl-failed, no success observed)"
+      ],
+      "http_status_breakdown": {"400": 1895, "403": 129, "200": 127},
+      "referer_signature": "TESTING_PURPOSES_ONLY",
+      "ua_spoofing": ["IE11/Win6.1 rv:11.0 (1075)", "IE8/Win7 (564)", "Chrome/Mac (512)"],
+      "attack_timing": ["burst_1: 20:23 (1063 hits)", "burst_2: 20:40 (1011 hits)", "subsided: 20:42+"]
+    },
+    "preflight_anomalies_count": 3,
+    "soc_summary": "外部 IP 161.33.12.212 から 20:23 と 20:40 に 2 波の HTTP フラッド（合計 2,151 req）と同時に SMTP AUTH ブルートフォース 15 件を検出。フィッシング中継目的の認証情報窃取と推定。bravo の高負荷は今回の攻撃に整合。SMTP AUTH 成功形跡なし、フラッドは 20:42 以降収束。",
+    "customer_questions": [
+      "20:23〜20:40 頃、Web サイト (com1.local) が重くなった等の報告はありましたか?",
+      "SMTP (メール) アカウントのパスワードを最近変更したメンバーはいますか?",
+      "161.33.12.212 という IP に心当たりはありますか?（取引先・委託業者・テストツール等）",
+      "直近で「メールが届かない」「メール認証エラー」の報告はありましたか?",
+      "メールサービスが一時停止しても業務にどの程度影響しますか?（封じ込め可否の判断材料）"
+    ]
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "161.33.12.212 から HTTP フラッド × 2 波 + SMTP AUTH ブルートフォース。フィッシング中継目的の認証情報窃取と推定。次: /check:check-imap-auth-exposure で SMTP AUTH 成否確認 + /check:check-known-attacker-ip で IP 追跡"
+  },
+  "next_skills": [
+    "/check:check-known-attacker-ip",
+    "/check:check-syslog-udp-injection",
+    "/check:check-imap-auth-exposure",
+    "/playbook:phishing (SMTP AUTH 成功確定後)"
+  ]
+}

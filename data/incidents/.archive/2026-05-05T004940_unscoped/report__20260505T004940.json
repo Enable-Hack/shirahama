@@ -1,0 +1,44 @@
+{
+  "skill": "report",
+  "incident_id": "2026-05-05T004940_unscoped",
+  "timestamp": "2026-05-05T00:49:40+09:00",
+  "actor": "ai_human",
+  "inputs": {
+    "incident_id": "2026-05-04_12:00_victor",
+    "review_path": "data/incidents/2026-05-04_12:00_victor/review__20260505T004615.json",
+    "hearing_path": "data/incidents/2026-05-04_12:00_victor/hearing__20260504T120000+0900.json",
+    "template_path": "docs/04_完了報告テンプレート.md"
+  },
+  "outputs": {
+    "completion_mode": "complete",
+    "completion_checklist": {
+      "直接原因特定": true,
+      "拡大再発不可": true,
+      "影響範囲確定": true,
+      "サービス正常": true,
+      "残タスク整理": true,
+      "追加質問準備": true,
+      "記録": true
+    },
+    "templates_generated": {
+      "テンプレ1": "顧客担当者向け電話",
+      "テンプレ2": "顧客経営層向け電話",
+      "テンプレ5": "メール正式記録"
+    },
+    "key_facts": {
+      "incident_id": "2026-05-04_12:00_victor",
+      "customer": "白浜 Web 担当",
+      "attack_pattern": "ddos/http-flood",
+      "source_ip": "161.33.12.212",
+      "attack_window": "2026-05-04 12:10:41 - 12:12:27",
+      "containment_time": "2026-05-04 15:42:27"
+    }
+  },
+  "verdict": {
+    "status": "✅",
+    "summary": "完全完了。テンプレ1/2/5出力済。D-1/B-1/B-2は顧客確認待ち。"
+  },
+  "next_skills": [
+    "/ticket"
+  ]
+}

@@ -1,0 +1,160 @@
+{
+  "skill": "playbook",
+  "incident_id": "2026-05-04_05:00_bravo_victor",
+  "timestamp": "2026-05-04T08:20:46.835827+00:00",
+  "actor": "ai_human",
+  "playbook": "phishing",
+  "inputs": {
+    "scenario": "phishing",
+    "incident_id": "2026-05-04_05:00_bravo_victor"
+  },
+  "outputs": {
+    "mail_findings": {
+      "imap_brute_force": {
+        "source_ip": "161.33.12.212",
+        "attempts": 15,
+        "usernames": [
+          "rocky",
+          "guest",
+          "test",
+          "wpadmin",
+          "webmaster",
+          "admin",
+          "root",
+          "operator",
+          "manager",
+          "obuchi"
+        ],
+        "severity": "🚨 CRITICAL"
+      },
+      "open_relay": {
+        "finding": "sendmail access に Connect:10 RELAY あり — 10.x.x.x 全域からリレー可",
+        "severity": "⚠️ WARNING"
+      },
+      "plaintext_auth": {
+        "finding": "dovecot disable_plaintext_auth = no",
+        "severity": "🚨 CRITICAL"
+      },
+      "aliases": {
+        "decode_alias": "decode: root (uudecode 攻撃可能性)",
+        "severity": "⚠️ WARNING"
+      }
+    },
+    "ssh_backdoor": {
+      "finding": "obuchi authorized_keys に attacker@10.1.129.10 公開鍵が May 3 08:53 に追加",
+      "severity": "🚨🚨 CRITICAL — 即時対応必要"
+    },
+    "proposed_commands": [
+      "# === 📋 read-only (証拠保全、即実行可) ==========================",
+      "ssh victor 'sudo cat /home/obuchi/.ssh/authorized_keys' > /tmp/evidence_obuchi_authorized_keys.txt",
+      "",
+      "# === ⏸ 承認待ち (リーダー Go 後に実行 / sudo パスワード要) =======",
+      "# (a) obuchi の不正鍵を消す:",
+      "ssh victor 'sudo sh -c \"> /home/obuchi/.ssh/authorized_keys\"'",
+      "",
+      "# (b) /home/obuchi のパーミッションを 700 に修復:",
+      "ssh victor 'sudo chmod 700 /home/obuchi && sudo chown obuchi:obuchi /home/obuchi'",
+      "",
+      "# (c) /home/obuchi/.ssh のパーミッションも 700 + 所有者修正:",
+      "ssh victor 'sudo chmod 700 /home/obuchi/.ssh && sudo chown obuchi:obuchi /home/obuchi/.ssh'",
+      "",
+      "# (d) 攻撃元 IP 161.33.12.212 を sendmail でブロック:",
+      "ssh victor 'echo \"161.33.12.212 REJECT\" | sudo tee -a /etc/mail/access && sudo makemap hash /etc/mail/access < /etc/mail/access'",
+      "",
+      "# (e) 攻撃元 IP を iptables でも遮断 (任意 / sendmail だけだと不十分):",
+      "ssh victor 'sudo iptables -I INPUT -s 161.33.12.212 -j DROP'"
+    ],
+    "cmd_validator_result": {
+      "exit_code": 0,
+      "errors": [],
+      "warnings": [
+        "All ssh commands use alias 'victor' which resolves to rocky@168.138.42.63 (OCI demo).",
+        "Production environment uses 'manage@10.1.1.2' — replace alias before tournament."
+      ]
+    },
+    "scope": {
+      "in_scope": [
+        "SSH バックドア (attacker@10.1.129.10) の証拠保全と封じ込め提案",
+        "IMAP ブルートフォース攻撃元 161.33.12.212 のブロック提案"
+      ],
+      "out_of_scope_logged": [
+        "sendmail open relay (Connect:10 RELAY) — 内部業務用の可能性あり、触らない",
+        "dovecot disable_plaintext_auth — 業務メールクライアントへの影響未評価のため保留",
+        "decode alias — 重要度低、後日対応候補"
+      ]
+    },
+    "verification_commands": [
+      {
+        "id": "v1",
+        "label": "obuchi authorized_keys が空か",
+        "cmd": "ssh victor 'sudo cat /home/obuchi/.ssh/authorized_keys'",
+        "expected": "(空 — 1 行も出ない)",
+        "fail_action": "もう一度 STEP 2(a) を実行"
+      },
+      {
+        "id": "v2",
+        "label": "/home/obuchi が perm 700 + 所有者 obuchi か",
+        "cmd": "ssh victor 'ls -la /home/ | grep obuchi'",
+        "expected": "drwx------. obuchi obuchi  ...  obuchi",
+        "fail_action": "STEP 2(b) を実行"
+      },
+      {
+        "id": "v3",
+        "label": "/etc/mail/access に REJECT が反映されたか",
+        "cmd": "ssh victor 'sudo grep \"161.33.12.212\" /etc/mail/access'",
+        "expected": "161.33.12.212 REJECT",
+        "fail_action": "STEP 2(d) を再実行"
+      },
+      {
+        "id": "v4",
+        "label": "[30 分後] 161.33.12.212 から新規 sasl 試行が止まったか",
+        "cmd": "ssh victor 'sudo grep \"161.33.12.212\" /var/log/maillog | tail -3'",
+        "expected": "最終試行時刻が「封じ込め実施時刻より前」のままで止まっている",
+        "fail_action": "別経路 (IP 遮断 firewalld) を検討、攻撃継続なら経営層連携"
+      },
+      {
+        "id": "v5",
+        "label": "sendmail サービス自体が正常稼働しているか",
+        "cmd": "ssh victor 'systemctl is-active sendmail dovecot httpd'",
+        "expected": "全部 active",
+        "fail_action": "封じ込めでサービス壊した可能性 → ロールバック検討"
+      },
+      {
+        "id": "v6",
+        "label": "[最終] obuchi の SSH ログインが今は不可能か (実害確認)",
+        "cmd": "ssh -o BatchMode=yes obuchi@victor 'whoami' 2>&1 | head -3",
+        "expected": "Permission denied (publickey)",
+        "fail_action": "鍵削除が不完全 → /home/obuchi/.ssh/authorized_keys を再確認"
+      }
+    ],
+    "success_criteria": [
+      "v1〜v3 が即時 OK (封じ込め直後)",
+      "v4 が 30 分間 OK (新規攻撃 0 件)",
+      "v5 が OK (サービス正常稼働、二次被害なし)",
+      "v6 が OK (obuchi ログイン不可、攻撃者ルート閉塞)"
+    ],
+    "recovery_state": {
+      "as_of": "2026-05-04T08:20:46.834852+00:00",
+      "containment_executed": [
+        "obuchi authorized_keys 削除",
+        "/home/obuchi perm 700 + chown",
+        "/home/obuchi/.ssh perm 700 + chown",
+        "sendmail access に REJECT 追加 (makemap 反映済)"
+      ],
+      "containment_skipped": [
+        "iptables -j DROP — iptables バイナリ不在 (Rocky 標準は firewalld/nftables)。sendmail ACL で代替済"
+      ],
+      "next_check_time": "30 分後 (maillog で v4 を確認)"
+    }
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "SSH バックドア確定 (attacker@10.1.129.10)。IMAP brute-force (161.33.12.212) 継続中。提案 5 件、cmd_validator PASS。リーダー承認後に人間が実行。"
+  },
+  "next_skills": [
+    "verification_commands を順に実行 (v1〜v6)",
+    "30 分後に v4 を確認",
+    "全 v が OK なら /report (完全完了モードで再実行)",
+    "/ticket (PukiWiki マークアップ生成)"
+  ]
+}

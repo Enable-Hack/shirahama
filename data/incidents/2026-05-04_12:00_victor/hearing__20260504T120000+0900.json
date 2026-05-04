@@ -1,0 +1,21 @@
+{
+  "skill": "hearing",
+  "incident_id": "2026-05-04_12:00_victor",
+  "timestamp": "2026-05-04T12:00:00+09:00",
+  "actor": "intake_human",
+  "inputs": {},
+  "outputs": {
+    "customer_name": "白浜 Web 担当",
+    "customer_org": "com1.local 運用部",
+    "phone_intake_time": "2026-05-04T12:00:00+09:00",
+    "pattern_estimate": "D",
+    "customer_tone": "anxious",
+    "affected_services": ["web"],
+    "time_window_jst": "12:00-12:30",
+    "customer_keywords": ["改ざん", "重い", "SEO目的の不審リンク"],
+    "free_text": "白浜のweb担当です。さっき12:00頃から会社のWordPress (com1.local) が重くて、トップページが改ざんされてるかもしれない。SEO目的の不審リンクが見えるって社員から連絡があった。今のところメールは生きてる。",
+    "promised_callback_time": "2026-05-04T13:00:00+09:00"
+  },
+  "verdict": {"status": "info", "summary": "受電シート手動入力 — Pattern D、トーン anxious、影響 web"},
+  "next_skills": ["/preflight", "/incident 12:00-12:30 victor"]
+}

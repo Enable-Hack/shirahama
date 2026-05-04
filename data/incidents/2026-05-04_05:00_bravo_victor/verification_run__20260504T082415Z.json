@@ -1,0 +1,70 @@
+{
+  "skill": "verification_run",
+  "incident_id": "2026-05-04_05:00_bravo_victor",
+  "timestamp": "2026-05-04T08:24:15.944531+00:00",
+  "actor": "ai_human",
+  "playbook_ref": "playbook-phishing__20260504T075003Z.json",
+  "outputs": {
+    "results": [
+      {
+        "id": "v1",
+        "label": "obuchi authorized_keys が空か",
+        "executed_cmd": "ssh victor 'sudo cat /home/obuchi/.ssh/authorized_keys'",
+        "actual": "(empty, exit=0)",
+        "expected": "(空 — 1 行も出ない)",
+        "verdict": "✅ pass"
+      },
+      {
+        "id": "v2",
+        "label": "/home/obuchi perm 700 + obuchi 所有",
+        "executed_cmd": "ssh victor 'ls -la /home/ | grep obuchi'",
+        "actual": "drwx------.  3 obuchi obuchi  74 May  3 08:53 obuchi",
+        "expected": "drwx------. obuchi obuchi ...",
+        "verdict": "✅ pass"
+      },
+      {
+        "id": "v3",
+        "label": "/etc/mail/access REJECT 反映",
+        "executed_cmd": "ssh victor 'sudo grep 161.33.12.212 /etc/mail/access'",
+        "actual": "161.33.12.212 REJECT",
+        "expected": "161.33.12.212 REJECT",
+        "verdict": "✅ pass"
+      },
+      {
+        "id": "v4",
+        "label": "封じ込め後の新規 sasl 試行 0 件",
+        "executed_cmd": "ssh victor 'sudo grep 161.33.12.212 /var/log/maillog | tail -3'",
+        "actual": "最終試行 May 4 04:35:40 UTC (= 封じ込め 07:50 UTC より 3h15m 前)",
+        "expected": "最終試行が封じ込め時刻より前",
+        "verdict": "✅ pass"
+      },
+      {
+        "id": "v5",
+        "label": "sendmail / dovecot / httpd 正常稼働",
+        "executed_cmd": "ssh victor 'systemctl is-active sendmail dovecot httpd'",
+        "actual": "active / active / active",
+        "expected": "全部 active",
+        "verdict": "✅ pass"
+      },
+      {
+        "id": "v6",
+        "label": "obuchi 直接 SSH 不可 (実害確認)",
+        "executed_cmd": "ssh -o BatchMode=yes obuchi@victor whoami",
+        "actual": "Permission denied (publickey,gssapi-keyex,gssapi-with-mic)",
+        "expected": "Permission denied",
+        "verdict": "✅ pass"
+      }
+    ],
+    "pass_count": 6,
+    "fail_count": 0,
+    "all_pass": true
+  },
+  "verdict": {
+    "status": "✅",
+    "summary": "効果確認 6/6 PASS。封じ込め完了、新規攻撃ゼロ、サービス正常稼働、obuchi ルート閉塞。完全完了モードに移行可。"
+  },
+  "next_skills": [
+    "/report (完全完了モードで再生成)",
+    "/ticket"
+  ]
+}

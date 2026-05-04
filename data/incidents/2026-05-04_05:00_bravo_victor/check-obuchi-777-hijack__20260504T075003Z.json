@@ -1,0 +1,27 @@
+{
+  "skill": "check",
+  "incident_id": "2026-05-04_05:00_bravo_victor",
+  "timestamp": "2026-05-04T07:30:00Z",
+  "actor": "ai_auto",
+  "check": "check-obuchi-777-hijack",
+  "inputs": {"target_host": "victor"},
+  "outputs": {
+    "patterns_matched": [
+      {"id": "A", "pattern": "HOME_DIR_777", "verdict": "🚨 YES — drwxrwxrwx (777) /home/obuchi"},
+      {"id": "B", "pattern": "SSH_DIR_FOREIGN_OWNER", "verdict": "🚨 YES — .ssh/ owned by rocky:rocky (not obuchi)"},
+      {"id": "C", "pattern": "ATTACKER_KEY_INSTALLED", "verdict": "🚨 YES — ssh-ed25519 attacker@10.1.129.10"},
+      {"id": "D", "pattern": "AUTHORIZED_KEYS_WORLD_READABLE", "verdict": "🚨 YES — -rw-r--r-- (644)"}
+    ],
+    "evidence": [
+      "drwxrwxrwx obuchi:obuchi /home/obuchi/ (mtime: May 3 08:53)",
+      "drwxrwxr-x rocky:rocky /home/obuchi/.ssh/ — foreign owner!",
+      "authorized_keys: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBkn4qK8ilmeT9G7p2XfYQs+vY3tEmL2+EhUJsVqHnxe attacker@10.1.129.10",
+      "sha256: b0e88075850c6e6c296751bce7c0c45d9fca2851cb5a975150ee3ccb0fece291"
+    ]
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "victor /home/obuchi が 777 = SSH バックドア確定。May 3 08:53 に rocky ユーザが .ssh/ を作成し attacker@10.1.129.10 の公開鍵を注入。obuchi でのパスワードレス SSH ログインが現在も可能な状態。"
+  },
+  "next_skills": ["/playbook:ransomware (横展開チェック)", "/report", "/ticket"]
+}

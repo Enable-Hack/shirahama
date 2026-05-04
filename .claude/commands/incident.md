@@ -1,17 +1,30 @@
 ---
+model: claude-sonnet-4-6
 description: 電話受電起点でログ取得 → analyzer → Mock → Claude → カテゴリ判定 → 推奨次手順を一気通貫で出す
 ---
 
 # /incident — 汎用インシデント対応エントリ
 
-引数: `<時間窓> <ホスト>`
-例: `/incident 13:00-13:30 victor`
+引数: `<時間窓> [<ホスト>...]`
+
+| 例 | 意味 |
+|---|---|
+| `/incident 13:00-13:30` | ホスト省略 = **両機嫌疑**（受電で「どっちがやられたか不明」のとき） |
+| `/incident 13:00-13:30 victor` | victor が主要嫌疑（bravo も横展開検出のため一応取得） |
+| `/incident 13:00-13:30 bravo` | bravo が主要嫌疑（同上） |
+| `/incident 13:00-13:30 victor bravo` | 両機が主要嫌疑（DDoS 同時被弾 / 一往復号シナリオ） |
+
+**注意**: ログは引数に関わらず **常に両機から取得** する（横展開検出のため）。
+引数のホストは「INCIDENT_ID ラベル」と「Claude 推論時の主要嫌疑ヒント」として使う。受電時点で
+不明なら省略 = `both` で問題ない。後段の `/review` 突合で主要嫌疑が確定する。
 
 ## やること（このファイルは Claude Code 自身に対する指示書）
 
 以下の手順を順番に実行してください。
 
 ---
+
+**本番環境前提 (必読)**: 本 skill を呼ぶ前に必ず `docs/booth1_production.md` を Read ツールで読む。Booth1 (com1.local) のネットワーク構成 / 認証情報 / OS 差分 / 触禁機器 / DHCP 配布範囲 / CIC DNS 関係 / 既侵害前提などの本番固有情報をすべて踏まえてから判断・コマンド生成する。本番接続前に必ず Read。
 
 ## §0. 本番環境定数（全 spoke コマンドが参照する）
 
@@ -28,38 +41,36 @@ description: 電話受電起点でログ取得 → analyzer → Mock → Claude 
 | **❌ 触禁: VPN 入口** | `133.42.49.151` (運営機器) |
 | 報告先 PukiWiki | `http://133.42.49.140/trouble_ticket_137/index.php` (whiskey / E5mA9cF3) |
 
-## §0.4 /preflight 直前状態の取り込み（任意 / 5/4 追加）
+## §0.4 /preflight 直前状態の取り込み
 
-受電直後に `/preflight` が走っている場合、その JSON 出力を **analyzer 判断材料 + Claude 推論コンテキスト** として読み込む。`/preflight` 未実行でもスキップして §1 に進める (後方互換)。
+`/preflight` が直前に走っていれば、`agent/preflight_io.py` 経由で /tmp/preflight_state.json
+を読み、§4 Claude 推論に渡す。未実行ならスキップ (後方互換)。
 
 ```bash
-PREFLIGHT_CONTEXT=""
-if [ -f /tmp/preflight_state.json ]; then
-    echo "─── /incident §0.4 /preflight 直前状態 (参考) ───"
-    jq -r '.outputs | to_entries[] |
-           "  [" + .key + "]" ,
-           ( .value.anomalies // []
-             | .[] | "    " + (.severity // "?") + " " + (.kind // "?") + ": " + (.detail // "?") )' \
-        /tmp/preflight_state.json 2>/dev/null || echo "  (preflight JSON parse 失敗 → skip)"
-
-    # /etc 配下に直近変更があれば §4 Claude 推論にブースト指示として渡す
-    ETC_CHANGES="$(jq -r '.outputs | to_entries[] | .value.etc_changed_recently[]?' /tmp/preflight_state.json 2>/dev/null | sort -u)"
-    if [ -n "$ETC_CHANGES" ]; then
-        echo "  ⚠️ 直近 1h で /etc 配下に変更があります:"
-        echo "$ETC_CHANGES" | sed 's/^/    /'
-        echo "  → §4 Claude 推論時に「改ざんの可能性」として渡す"
-    fi
-
-    # outputs 全体を JSON 文字列として §4 に export
-    PREFLIGHT_CONTEXT="$(jq -c '.outputs' /tmp/preflight_state.json 2>/dev/null || echo '{}')"
-    echo ""
-else
-    echo "─── /incident §0.4 /preflight 未実行 (推奨: /preflight 後に /incident) ───"
-fi
+PREFLIGHT_CONTEXT="$(PYTHONPATH="$SHIRAHAMA_DIR" python3 -c '
+import json
+from agent.preflight_io import load_preflight_context, summarize_for_incident
+state = load_preflight_context()
+if state is None:
+    print("")
+else:
+    summary = summarize_for_incident(state)
+    print("─── /incident §0.4 /preflight 直前状態 ───")
+    for a in summary["anomalies"]:
+        print(f"  [{a[\"host\"]}] {a[\"severity\"]} {a[\"kind\"]}: {a[\"detail\"]}")
+    if summary["etc_changed_recently"]:
+        print("  ⚠️ /etc 直近変更:")
+        for f in summary["etc_changed_recently"]:
+            print(f"    {f}")
+    print("")
+    # JSON 文字列として export (後段 python に渡る)
+    import sys; sys.stderr.write(json.dumps(summary["outputs"], ensure_ascii=False))
+' 2>&1 1>&2)"
 export PREFLIGHT_CONTEXT
 ```
 
-`PREFLIGHT_CONTEXT` は §4 の python script (Claude 推論段) で `os.environ['PREFLIGHT_CONTEXT']` 経由で読み込まれ、`ClaudeBackend.propose_patches(..., preflight_context=...)` に渡される。
+`PREFLIGHT_CONTEXT` は §4 の python で `os.environ['PREFLIGHT_CONTEXT']` 経由で
+`ClaudeBackend.propose_patches(..., preflight_context=...)` に渡る。
 
 ## §0.5 既侵害前提（重要 / 18_§9 由来）
 
@@ -76,13 +87,11 @@ export PREFLIGHT_CONTEXT
 - **対策コマンドを提示する場合は必ず冒頭に「リーダー承認後」を明記**
 - settings.json で破壊系コマンドは `deny` / `ask` で物理的にブロック済 — Claude が善意で `nsupdate` `systemctl stop` `dnf install` を提示しても実行されない
 
-## §0.7 全 spoke 共通の §0 参照ルール
+## §0.7 単段ルーティング (要約)
 
-- `/playbook:wp-tamper` `/playbook:dns-tamper` `/playbook:ddos` `/playbook:phishing` `/playbook:ransomware` を呼ぶ前に、必ず本ファイルの §0〜§0.6 を読み返す
-- 各 spoke の §0 にある「対象ホスト」「sudo 可否」「特殊注意」を確認
-- 三段ルーティング: `/incident` → (`/check:*` 単発 or `/scenario:*` 連鎖アグリゲータ) → `/playbook:*`
-- カテゴリ未確定の場合は先に `/check:check-<vuln>` (例 `/check:check-wp-xmlrpc-brute`) で痕跡確認 → playbook へ
-- 複数 check を並行起動するキルチェーンが疑われる場合は `/scenario:<chain>` (例 `/scenario:killchain-recon-rce-dbexfil`) で一括起動
+`/incident` (本 skill) で attack_pattern まで判定 → `/review` に attack_pattern をヒントとして渡し、
+ヒアリング ↔ 観測ログを 3 列突合して最終判定 (A/B/C/D) + 治しすぎないスコープ提案を得る。
+具体的な復旧 / 封じ込めコマンドは `docs/recovery_cookbook.md` を人間が参照する (AI は提示しない)。
 
 ---
 
@@ -101,61 +110,79 @@ cd "$SHIRAHAMA_DIR"
 echo "─── /incident §1 ログ取得 ───"
 echo "victor: $SSH_VICTOR / bravo: $SSH_BRAVO"
 
-# victor (Web/Mail/DHCP) のログ群 — 接続失敗しても続行
-ssh -o ConnectTimeout=5 "$SSH_VICTOR" 'sudo tail -2000 /var/log/httpd/access_log 2>/dev/null'  > /tmp/incident_access.log     2>/dev/null || true
-ssh -o ConnectTimeout=5 "$SSH_VICTOR" 'sudo tail -1000 /var/log/httpd/error_log  2>/dev/null'  > /tmp/incident_httpd_err.log  2>/dev/null || true
-ssh -o ConnectTimeout=5 "$SSH_VICTOR" 'sudo tail -1000 /var/log/secure           2>/dev/null'  > /tmp/incident_secure.log     2>/dev/null || true
-ssh -o ConnectTimeout=5 "$SSH_VICTOR" 'sudo tail -1000 /var/log/maillog          2>/dev/null'  > /tmp/incident_maillog.log    2>/dev/null || true
-ssh -o ConnectTimeout=5 "$SSH_VICTOR" 'sudo tail -500  /var/log/messages         2>/dev/null'  > /tmp/incident_messages.log   2>/dev/null || true
+# tail_first_existing: 候補パスを順に試し、最初に存在するものから tail。
+# Rocky/FreeBSD のログパス差を OS 判定なしで吸収する。
+tail_first_existing() {
+    local host="$1"; local n="$2"; local out="$3"; shift 3
+    local paths="$*"
+    ssh -o ConnectTimeout=5 "$host" "for p in $paths; do
+        if sudo test -r \"\$p\"; then sudo tail -$n \"\$p\"; exit 0; fi
+    done; exit 1" > "$out" 2>/dev/null || true
+}
 
-# bravo (DNS/掲示板) のログ群 — Rocky=/var/log/secure, FreeBSD=/var/log/auth.log の両対応
-ssh -o ConnectTimeout=5 "$SSH_BRAVO"  'sudo tail -2000 /var/log/named.log        2>/dev/null'  > /tmp/incident_named.log      2>/dev/null || true
-ssh -o ConnectTimeout=5 "$SSH_BRAVO"  'sudo tail -1000 /var/log/secure           2>/dev/null'  > /tmp/incident_auth.log       2>/dev/null || true
-ssh -o ConnectTimeout=5 "$SSH_BRAVO"  'sudo tail -1000 /var/log/auth.log         2>/dev/null'  >> /tmp/incident_auth.log      2>/dev/null || true
-ssh -o ConnectTimeout=5 "$SSH_BRAVO"  'sudo tail -1000 /var/log/maillog          2>/dev/null'  >> /tmp/incident_maillog.log   2>/dev/null || true
+# 「主要嫌疑ホスト」に関わらず、両機・両サービスから取得する (横展開検出のため)。
+# ファイル名は victor_*.log / bravo_*.log で分離 — analyzer.py は両方を自動で読む。
+
+# victor (Web/Mail) — 本番 Rocky / 将来 FreeBSD 化に備え両対応
+tail_first_existing "$SSH_VICTOR" 2000 /tmp/victor_access.log    /var/log/httpd/access_log /var/log/httpd-access.log
+tail_first_existing "$SSH_VICTOR" 1000 /tmp/victor_httpd_err.log /var/log/httpd/error_log  /var/log/httpd-error.log
+tail_first_existing "$SSH_VICTOR" 1000 /tmp/victor_secure.log    /var/log/secure /var/log/auth.log
+tail_first_existing "$SSH_VICTOR" 1000 /tmp/victor_maillog.log   /var/log/maillog
+tail_first_existing "$SSH_VICTOR" 500  /tmp/victor_messages.log  /var/log/messages
+
+# bravo (DNS/掲示板) — 本番 FreeBSD / デモ Rocky を OS 判定なしで吸収
+# bravo にも httpd / mariadb 等が動いているケース (デモ環境) があるので Web ログも取る
+tail_first_existing "$SSH_BRAVO"  2000 /tmp/bravo_access.log     /var/log/httpd/access_log /var/log/httpd-access.log
+tail_first_existing "$SSH_BRAVO"  1000 /tmp/bravo_httpd_err.log  /var/log/httpd/error_log  /var/log/httpd-error.log
+tail_first_existing "$SSH_BRAVO"  2000 /tmp/bravo_named.log      /var/log/named.log /var/log/named/named.log /var/named/log
+tail_first_existing "$SSH_BRAVO"  1000 /tmp/bravo_auth.log       /var/log/auth.log /var/log/secure
+tail_first_existing "$SSH_BRAVO"  1000 /tmp/bravo_maillog.log    /var/log/maillog
+tail_first_existing "$SSH_BRAVO"   500 /tmp/bravo_messages.log   /var/log/messages
 
 # 取得結果サマリ（0 行なら接続失敗 or 該当ログ無し）
 echo "─── 取得結果 ───"
-for f in /tmp/incident_*.log; do
+for f in /tmp/victor_*.log /tmp/bravo_*.log; do
     [ -f "$f" ] && echo "  $f: $(wc -l < $f) 行"
 done
 ```
 
 ### 2. 時間窓フィルタ + JSONL 化
 
-引数 $1 (例 `13:00-13:30`) を ISO 8601 (UTC) に変換して jq でフィルタ。
+引数 $1 (例 `13:00-13:30`) を ISO 8601 (JST / +09:00) に変換して jq でフィルタ。
 
 ```bash
 # 引数 $1 = "HH:MM-HH:MM" 形式
 WINDOW="$1"
 START_TIME="${WINDOW%-*}:00"
 END_TIME="${WINDOW#*-}:00"
-TODAY="$(date -u +%Y-%m-%d)"
+TODAY="$(TZ=Asia/Tokyo date +%Y-%m-%d)"
 
-# ★前提: ログのタイムスタンプは UTC (+00:00、Rocky/FreeBSD デフォルト)
-#   入力時刻も UTC のまま使う。JST で考えてるなら手動で -9h して渡すこと
-#   例: 通報「23:30 JST 頃から」 → 引数は "14:30-14:40"
-START="${TODAY}T${START_TIME}+00:00"
-END="${TODAY}T${END_TIME}+00:00"
+# ★前提: 入力もログのタイムスタンプも JST (+09:00)
+#   受電時に聞いた時刻 (例「13:30 頃から」) をそのまま `/incident 13:30-13:40` で渡せる。
+#   サーバ側 (Rocky / FreeBSD / OCI) の locale が JST であることを前提にしている。
+#   もしログが UTC だった場合は parse_clf.py / syslog filter 側で吸収する必要がある。
+START="${TODAY}T${START_TIME}+09:00"
+END="${TODAY}T${END_TIME}+09:00"
 echo "─── /incident §2 時間窓フィルタ ───"
-echo "時間窓: $START 〜 $END (UTC)"
+echo "時間窓: $START 〜 $END (JST)"
 
-# nginx access_log → /tmp/access.log
+# nginx access_log → /tmp/access.log (両機合流)
 # ★重要: ファイル名は /tmp/access.log にすること
 #   agent/analyzer.py の analyze_nginx() は "access.log" のみ拾う
-#   /tmp/incident_access.jsonl に書くと analyzer に読まれない
-python scripts/preprocess/parse_clf.py /tmp/incident_access.log \
-  | jq --arg s "$START" --arg e "$END" 'select(.timestamp >= $s and .timestamp <= $e)' \
+{
+    [ -s /tmp/victor_access.log ] && python scripts/preprocess/parse_clf.py /tmp/victor_access.log
+    [ -s /tmp/bravo_access.log ]  && python scripts/preprocess/parse_clf.py /tmp/bravo_access.log
+} | jq --arg s "$START" --arg e "$END" 'select(.timestamp >= $s and .timestamp <= $e)' \
   > /tmp/access.log
 
-echo "  /tmp/access.log: $(wc -l < /tmp/access.log) 行 (フィルタ後)"
+echo "  /tmp/access.log: $(wc -l < /tmp/access.log) 行 (フィルタ後、両機合流)"
 
 # secure / named / maillog / auth は syslog 形式 (年なし)。
 # 「今日の月日 + HH:MM 範囲」で絞る (古い brute 痕跡が時間窓内のシグナルに混ざらないように)
-# ※ analyzer が同名ファイルを読むので overwrite する。raw 全文は victor/bravo に残っている
+# analyzer.py は victor_*.log / bravo_*.log を両方自動で読む (run_with_unmatched の fname パターン参照)
 START_HM="${WINDOW%-*}"
 END_HM="${WINDOW#*-}"
-TODAY_PREFIX="$(date -u +'%b %e')"   # "May  3" (BSD/GNU 共通の space-padded 形式 = syslog と同じ)
+TODAY_PREFIX="$(LC_ALL=C TZ=Asia/Tokyo date +'%b %e')"   # "May  3" (BSD/GNU 共通の space-padded 形式 = syslog と同じ。LC_ALL=C で ja_JP locale を回避 / TZ で JST 固定)
 
 filter_syslog() {
     local f="$1"
@@ -169,7 +196,9 @@ filter_syslog() {
     echo "  $f: $before → $(wc -l < $f) 行 (時間窓フィルタ後)"
 }
 
-for f in /tmp/incident_secure.log /tmp/incident_named.log /tmp/incident_maillog.log /tmp/incident_auth.log; do
+# 両機の syslog 系を時間窓フィルタ
+for f in /tmp/victor_secure.log /tmp/victor_maillog.log /tmp/victor_messages.log \
+         /tmp/bravo_auth.log    /tmp/bravo_named.log    /tmp/bravo_maillog.log /tmp/bravo_messages.log; do
     filter_syslog "$f"
 done
 ```
@@ -192,9 +221,13 @@ for s in signals:
 "
 ```
 
-### 4. Mock 二段ふるい + Claude 集約
+### 4. Mock 二段ふるい + Claude 集約 + attack_pattern 判定
 
 `.env` から ANTHROPIC_API_KEY を読み込み（無ければ Mock 層だけで完走）。
+
+このフェーズで以下 2 つを同時に出す:
+- **patches** (Mock + Claude が個別シグナルから生成する処置候補)
+- **attack_pattern** / **attack_subpattern** (全シグナルを束ねた **シナリオ全体** の判定 — `/review` への引き継ぎ用)
 
 未分類ログ (analyzer の 41 pattern にマッチしなかった行) は **Claude に丸投げするとトークン爆発** するので、Mock で次の 3 段ふるいを通す:
 
@@ -212,7 +245,7 @@ for s in signals:
 cd "${SHIRAHAMA_DIR:-/Users/ryu/Desktop/shirahama}"
 [ -f .env ] && export $(grep -v '^#' .env | xargs)
 
-# §2 で計算した START / END を python に渡す (ISO 8601 UTC)
+# §2 で計算した START / END を python に渡す (ISO 8601 JST / +09:00)
 export INCIDENT_WINDOW_START="$START"
 export INCIDENT_WINDOW_END="$END"
 
@@ -280,98 +313,176 @@ for p in validated:
 "
 ```
 
+### 4.2 attack_pattern 判定 (シナリオ全体の分類)
+
+§4 の patches とは別に、**全 signals + filtered_unmatched + preflight_context + 受電内容** を束ねて
+「この事案は 5 カテゴリのどれか」を Claude に 1 文字列で答えさせる。出力は次段 `/review` に渡るので
+ここでブレると下流が全部ズレる — **必ず以下の判定基準を使うこと**。
+
+#### 4.2.1 attack_pattern enum (必須 / 1 つだけ)
+
+| 値 | 主な観測シグナル / 受電トリガ |
+|---|---|
+| `ddos` | 同一 IP からの大量 GET/POST、SYN_RECV 多発、ANY クエリ比率異常、サービス応答鈍化の通報 |
+| `dns-tamper` | named.log に `update.*(approved\|forwarded)` / `transfer\|axfr\|ixfr` / SOA serial 変動 / 主要 A レコード書換 |
+| `phishing` | maillog に SASL brute / SPF・DKIM fail / mail-burst / 不審メール本文の通報 / 受信者ピボット |
+| `ransomware` | `*.encrypted/.locked/.crypt` 出現、`README_*/DECRYPT_*/HOW_TO_*` 置き手紙、pkexec PwnKit、sudo 不正、UID 0 重複、`/home/obuchi` 経由横展開 |
+| `wp-tamper` | wp-login/xmlrpc への POST brute、rainloop CVE-2022-29360、PHP RFI/LFI、`uploads/*.php` 出現、`.htaccess` AddHandler 改変 |
+| `unknown` | 上記いずれにも有意に該当しない / シグナルが薄すぎて断定不可 |
+
+#### 4.2.2 attack_subpattern (任意 / 高解像度な内訳)
+
+| attack_pattern | attack_subpattern 候補 | 判別シグナル |
+|---|---|---|
+| `ddos` | `http-flood` | 同一 IP × 同一 URL への GET/POST が秒あたり閾値超 / User-Agent 偏り |
+| `ddos` | `dns-amplification` | `query: ANY` の比率 > 30% / 外部偽装ソースからの ANY クエリ集中 |
+| `ddos` | `syn-flood` | `ss -tan state syn-recv` 多発 / `netstat -s` の listen overflow / RTX `syn-flood\|exceeded` syslog |
+| `dns-tamper` | `nsupdate-driven` | `update.*approved` あり (allow-update が広い設定が成立) / 動的ゾーン mtime 更新 |
+| `dns-tamper` | `axfr-leak` | `transfer\|axfr\|ixfr` 痕跡 / 外部から `dig AXFR` が成功 |
+| `dns-tamper` | `cache-poison` | forwarders 経由の異常応答 / SOA serial 不整合 / 主要 A レコードが管理外 IP を返す |
+| `phishing` | `inbound-spear` | 特定アカウント宛の偽装 From / 業務文脈に沿った標的型本文 / 1 通単位の通報 |
+| `phishing` | `broad-cast` | mail-burst (短時間に同一送信元から大量) / SPF・DKIM fail 多発 / 全社展開の苦情 |
+| `phishing` | `receiver-pivot` | SASL brute 成功後のアカウント乗っ取り → 受信側からの再送信 / SMTP AUTH 認証失敗→成功遷移 |
+| `ransomware` | `actual-encryption` | `*.encrypted/.locked` ファイル出現 + 置き手紙 + 業務ファイルの mtime 集中変更 |
+| `ransomware` | `lateral-only` | 暗号化痕跡なし、pkexec / sudo 不正 / `/home/obuchi/.ssh/authorized_keys` 追加 / UID 0 重複 |
+| `ransomware` | `internal-misuse` | 配布アカウント外の社内 IP からの権限昇格、業務時間外の admin 操作、外部 C2 通信なし |
+| `wp-tamper` | `rainloop-cve` | rainloop 1.12.0 への CVE-2022-29360 系パス / `/?Admin` への異常アクセス |
+| `wp-tamper` | `php-rfi-lfi` | `?page=http://` `?file=../../` `php://filter` `data://` 系 / error_log の include 失敗 |
+| `wp-tamper` | `xmlrpc-brute` | `POST /xmlrpc.php` 連発 / `system.multicall` ペイロード / wp-login と並走 |
+| `wp-tamper` | `htaccess-rce` | `.htaccess` に `AddHandler\|AddType .*php` 追記 / uploads 配下から PHP 実行成立 |
+
+サブパターン不明 / 複合 (例: ddos の中で http-flood + syn-flood 同時) は **空文字 or 主たる方** を入れる。
+
+#### 4.2.3 Claude 投入用プロンプト (attack_pattern 判定)
+
+```bash
+cd "${SHIRAHAMA_DIR:-/Users/ryu/Desktop/shirahama}"
+PYTHONPATH=. ${SHIRAHAMA_PY:-python3} -c "
+import os, json
+from agent.backends.claude_backend import ClaudeBackend
+# signals / filtered_unmatched は §4 の python ブロックで定義済 — 同一プロセス前提なら再利用可
+# 別プロセスなら analyzer.run_with_unmatched('/tmp') で取り直す
+result = ClaudeBackend().classify_attack_pattern(
+    signals=signals,
+    unmatched=filtered_unmatched,
+    preflight_context=preflight_ctx,
+)
+print(f'─── /incident §4.2 attack_pattern 判定 ───')
+print(f'attack_pattern    : {result[\"attack_pattern\"]}')
+print(f'attack_subpattern : {result.get(\"attack_subpattern\", \"\")}')
+print(f'reasoning         :')
+for line in result['reasoning'].splitlines():
+    print(f'  {line}')
+# 後段 §5 / §8 に env で渡す
+os.environ['INCIDENT_ATTACK_PATTERN'] = result['attack_pattern']
+os.environ['INCIDENT_ATTACK_SUBPATTERN'] = result.get('attack_subpattern', '')
+"
+export INCIDENT_ATTACK_PATTERN
+export INCIDENT_ATTACK_SUBPATTERN
+```
+
+`classify_attack_pattern` には Claude に次の指示を渡すこと:
+
+```text
+あなたはインシデントトリアージの分類器です。以下の観測情報を見て、
+事案全体を 1 つの attack_pattern (ddos / dns-tamper / phishing / ransomware / wp-tamper / unknown)
+に分類し、可能なら attack_subpattern も付けてください。
+
+判定基準:
+- ddos        : 同一 IP からの大量リクエスト、SYN_RECV 多発、ANY クエリ集中、サービス応答鈍化
+  - http-flood        : HTTP GET/POST が同一 URL に集中
+  - dns-amplification : ANY クエリ比率 > 30% / 偽装ソース
+  - syn-flood         : SYN_RECV 多発 / listen overflow
+- dns-tamper  : BIND の動的更新成立、AXFR 試行、SOA/A レコード書換
+  - nsupdate-driven : update.*approved 痕跡 + allow-update が広い
+  - axfr-leak       : transfer/axfr/ixfr で外部にゾーン漏洩
+  - cache-poison    : forwarders 経由で異常応答 / SOA 不整合
+- phishing    : SASL brute / SPF・DKIM fail / mail-burst / 不審メール通報
+  - inbound-spear  : 特定アカウント宛の偽装 From、標的型本文
+  - broad-cast     : 短時間に大量送信、全社展開の苦情
+  - receiver-pivot : SASL brute 成功後の乗っ取りからの再送信
+- ransomware  : 暗号化拡張子出現、置き手紙、pkexec PwnKit、sudo 不正、UID 0 重複、横展開
+  - actual-encryption : 暗号化ファイル + 置き手紙 + 業務ファイル mtime 集中変更
+  - lateral-only      : 暗号化なし、権限昇格 / authorized_keys 追加 / UID 0 重複のみ
+  - internal-misuse   : 配布アカウント外の社内 IP からの権限濫用、外部 C2 なし
+- wp-tamper   : wp-login/xmlrpc brute、rainloop CVE、PHP RFI/LFI、uploads PHP、.htaccess 改変
+  - rainloop-cve  : rainloop 1.12.0 への CVE-2022-29360 系
+  - php-rfi-lfi   : ?page=http:// / ../../ / php://filter / data://
+  - xmlrpc-brute  : POST /xmlrpc.php 連発 / system.multicall
+  - htaccess-rce  : .htaccess に AddHandler/AddType .*php 追記、uploads から PHP 実行
+- unknown     : 上記いずれも有意に成立しない / シグナル不足
+
+出力 (JSON):
+{
+  "attack_pattern":    "ddos|dns-tamper|phishing|ransomware|wp-tamper|unknown",
+  "attack_subpattern": "<上の表の値 or 空文字>",
+  "reasoning":         "どのシグナル(pattern_tag / IP / ファイル名 / 受電内容)が決め手だったかを 3〜6 行で。
+                        該当しないカテゴリを除外した理由も短く併記すること。"
+}
+
+注意:
+- 配布アカウント (manage / root / admin / vty / enable) 由来のシグナルは無視 (§0.5)
+- /etc/passwd の UID 0 重複 (toor) は ransomware ではなく既知の常設脆弱性 — 単独では unknown 寄り
+- preflight_context に「直前の異常」があればそれを最優先 (受電前から動いていた攻撃が顕在化した可能性)
+- 複合シナリオ (例: wp-tamper → ransomware への遷移) は **より深い段階** を返す (= ransomware)
+```
+
 ### 4.1 フィルタの設計トレードオフ (重要)
 
 | ケース | 挙動 | 根拠 |
 |---|---|---|
 | 窓外 + 既知侵害 IP (10.1.129.x) | **保持** | §0.5 既侵害前提。obuchi/manage の 4/24 ログイン痕跡を見逃さない |
 | 窓外 + analyzer signals に出現した IP | **保持** | 同 IP 主体の pre-window recon / persistence を Claude が時系列で見る |
-| 窓外 + 完全に未知の IP | drop | この経路は `/check:check-known-attacker-ip` が forensic で拾う責務 |
+| 窓外 + 完全に未知の IP | drop | 受電窓トリアージの範疇外。後段 `/review` で必要なら追加収集 |
 | ts パース失敗 (raw に時刻なし or 異常 format) | **保持** | 落とすと攻撃の pivot 行を見逃すリスク。Claude に raw を渡して判定 |
 
-**「窓外 + 完全未知 IP」が抜ける** のは意図的: `/incident` は受電窓のトリアージ、深掘り forensic は `/check:*` の役割。両者を混ぜると trade-off が崩れる。
+**「窓外 + 完全未知 IP」が抜ける** のは意図的: `/incident` は受電窓のトリアージに集中する。深掘り forensic が必要なら `/review` 段階で人間が追加 SSH 収集を判断する。
 
-### 5. カテゴリ判定 + 次に叩くべき skill 提示
+### 4.5 signal の `raw_log_excerpt` 必須化 (2026-05-05)
 
-**二段ルーティング**: analyzer 出力の pattern_tag を見て、まず `/check:*` でピンポイント痕跡確認 → 🚨 確定なら該当 `/playbook:*` で深掘りに進む。
+各 signal の `evidence` に **`raw_log_excerpt`** (string、1〜3 行の生ログ抜粋) を必ず含める。これは HTML ダッシュボードの /incident カードで「📜 生ログ抜粋」として展開表示され、人間が pattern 判定の根拠を直接目視できる。
 
-#### 5.1 ★最初に必ず叩く★ 既侵害前提の check (§0.5 の根拠)
+```json
+{
+  "pattern_tag": "ddos/http-flood",
+  "severity": "🚨",
+  "evidence": {
+    "ip": "161.33.12.212",
+    "count": 2480,
+    "raw_log_excerpt": "161.33.12.212 - - [04/May/2026:12:10:41 +0000] \"GET / HTTP/1.1\" 200 53169 \"TESTING_PURPOSES_ONLY\" \"Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; Trident/4.0; SLCC2)\""
+  }
+}
+```
 
-`/incident` 起動時、analyzer 結果に関わらず以下を最優先で並行起動する:
+ルール:
+- 1 signal につき **1〜3 行**。長すぎると視認性が落ちる
+- 元のログをそのまま貼る (truncate しない、AI が要約しない)
+- 改行込みで JSON 文字列にエスケープ (`\n`)
+- mail/syslog/access_log どのログ種でも同じフィールド名で統一
 
-| 観点 | /check |
-|---|---|
-| 10.1.129.0/24 由来の活動 (obuchi/manage 既侵害) | `/check:check-known-attacker-ip` |
-| ログ自体の汚染疑い (514/UDP 注入) | `/check:check-syslog-udp-injection` |
+### 5. 推奨次手順: 必ず /review に渡す
 
-→ 🚨 注入確定なら、後続 check の判定信頼度を **下げて** 解釈すること。
+`/incident` のゴールは **attack_pattern を確定し、`/review` に引き継ぐこと**。
+個別の `/check:*` や `/playbook:*` は廃止済 (archive/ に保管) — 本 skill から提示しない。
 
-#### 5.2 pattern_tag → check → playbook ルーティング表
+`/review` はヒアリングシート ↔ 観測ログ ↔ attack_pattern を 3 列突合し、A/B/C/D 4 択判定 +
+「治しすぎない」スコープ提案を出す。具体的な復旧 / 封じ込めコマンド一覧は
+`docs/recovery_cookbook.md` を人間がリーダー承認後に参照する。
 
-| analyzer pattern_tag (主) | 補助条件 | 1. /check | 2. 確定後 /playbook |
-|---|---|---|---|
-| `webapp/xmlrpc` + `webapp/auth-bruteforce` | — | `check-wp-xmlrpc-brute` | `wp-tamper` |
-| `webapp/author-scan` | — | `check-wp-rest-author-scan` | `wp-tamper` |
-| `xss/*` | path に `/rain/` | `check-rainloop-cve29360` + `check-rainloop-domain-relay` | `wp-tamper` + `phishing` |
-| `webapp/dotfile-access` | path に `.my.cnf` | `check-mycnf-leak` + `check-mysql-x-direct` + `check-mariadb-3306-direct` | `wp-tamper` + `ransomware` |
-| `webapp/dotfile-access` | path に `wp-config` | `check-wp-config-leak` | `wp-tamper` + `ransomware` |
-| `webapp/dotfile-access` | path に `.htaccess` | `check-htaccess-rce` | `wp-tamper` |
-| `webapp/upload-php` | uploads/ 配下 | `check-htaccess-rce` + `check-php-allow-url-fopen` | `wp-tamper` + `ransomware` |
-| `webapp/scanner-ua` | path に `backup_html` | `check-backup-html-exposure` | `wp-tamper` |
-| `webapp/scanner-ua` | path に `/~user/` | `check-userdir-listing` | `wp-tamper` |
-| `path_traversal` / `cmdi` | — | `check-php-allow-url-fopen` | `wp-tamper` + `ransomware` |
-| `dns/unauthorized-update` / `dns/update-denied` | — | `check-bind-allow-update` | `dns-tamper` |
-| `dns/axfr-attempt` | — | `check-bind-axfr` | `dns-tamper` |
-| `dns/amplification-bait` / `dns/amplification-ratio` | — | `check-allow-query-amplification` | `ddos` |
-| `privesc/pkexec-attempt` | — | `check-pkexec-pwnkit` | `ransomware` |
-| `privesc/sudo-unauthorized` | — | (check なし) | `ransomware` |
-| `persist/at-job` | — | `check-at-job-persist` | `ransomware` |
-| `mail/relay-attempt` / `mail/relay-denied` | — | `check-sendmail-open-relay` + `check-sendmail-old-cf` | `phishing` |
-| `mail/burst` | from=apache@/dovecot@ 等 | `check-aliases-root-forward` | `phishing` + `wp-tamper` |
-| `mail/burst` | 通常メール | `check-sendmail-open-relay` | `phishing` |
-| `mail/sasl-failed` | imap-login 経路 | `check-courier-imap-plain` + `check-dovecot-passdb-pam` | `phishing` |
-| `mail/spf-fail` / `mail/dkim-fail` 単発 | — | `check-sendmail-open-relay` | `phishing` |
-| `auth/ssh-failed` / `auth/ssh-invalid-user` | user=obuchi | `check-obuchi-777-hijack` + `check-known-attacker-ip` | `ransomware` |
-| `auth/ssh-failed` | user=toor (bravo) | `check-toor-uid0` | `ransomware` |
-| `auth/ssh-bruteforce` | — | `check-known-attacker-ip` | `ransomware` |
-| `protocol/telnet-access` | — | `check-telnet-plain-auth` | `ransomware` |
-| 同一 IP からの request burst のみ (tag 不在) | — | (check なし) | `ddos` |
+```bash
+echo "─── /incident §5 推奨次手順 ───"
+echo "  attack_pattern    : ${INCIDENT_ATTACK_PATTERN}"
+echo "  attack_subpattern : ${INCIDENT_ATTACK_SUBPATTERN:-(none)}"
+echo
+echo "  次に必ず叩く: /review --attack-pattern ${INCIDENT_ATTACK_PATTERN}"
+echo "  (attack_subpattern が出ていれば --attack-subpattern も併記)"
+echo
+echo "  封じ込め / 復旧コマンドは docs/recovery_cookbook.md を人間が参照すること。"
+echo "  AI からは具体コマンドを提示しない (治しすぎない / settings.production.json で deny)。"
+```
 
-#### 5.2bis キルチェーン疑い → /scenario:* (複数 check 並行起動)
-
-複数 pattern_tag がカテゴリをまたいで同時発火している場合、個別 check を 1 つずつ叩くより **`/scenario:*` で連鎖一括起動** が効率的:
-
-| 同時発火パターン | /scenario | 想定キルチェーン |
-|---|---|---|
-| `webapp/scanner-ua` + `webapp/dotfile-access` + `path_traversal/cmdi` | `/scenario:killchain-recon-rce-dbexfil` | 偵察 → Web RCE → DB 持ち出し |
-| `dns/unauthorized-update` + (受電「サイト見た目変」) + `mail/spf-fail` | `/scenario:dns-spoof-phish` | 内部 MITM → DNS 書換 → フィッシング |
-| `auth/ssh-bruteforce` + `protocol/telnet-access` + `privesc/pkexec-attempt` | `/scenario:vpn-uplink-abuse` | VPN 経路 → 上流信頼悪用 → 権限昇格 |
-
-#### 5.3 analyzer tag 不在でも観察すべき (手動起動)
-
-以下は analyzer が直接 tag を返さないが、状況証拠で叩く check:
-
-- 受電内容に「内部 IP 帯のクライアントが偽サイトに飛ばされた」 → `check-rogue-dhcp`
-- backup_html / 旧 BBS への到達ログを発見 → `check-backup-html-exposure`
-- SNMP recon 痕跡や 161 への異常接続 → `check-snmp-public-walk`
-- ログ自体に矛盾 (時刻逆行 / hostname 不整合) → `check-syslog-udp-injection`
-- 受電内容に「DB が空になった」 → `check-mariadb-3306-direct`
-- 受電内容に「外部メール (gmail 等) のパスワードが盗まれた」 → `check-rainloop-domain-relay`
-- 受電内容に「Squid プロキシが勝手に起動」 → `check-squid-installed-not-running`
-- 受電直後の状況把握 (ホスト防御の前提条件確認) → `check-baseline-hardening`
-- 上記いずれにも該当しない → 人間判断 → リーダー相談
-
-**バージョン静的確認 (slim 版 / 報告書記載用)**: `check-mariadb-eol` / `check-bind-version` / `check-sendmail-old-cf` / `check-nkf-rpm-residue` / `check-vm-detection`
-
-#### 5.4 複数 tag 同時発火
-
-複数 tag が同時に出た場合、上記表で **複数 check を並行起動して良い**。例:
-- `webapp/xmlrpc` + `webapp/dotfile-access` → `check-wp-xmlrpc-brute` と `check-mycnf-leak` を両方
-- `auth/ssh-bruteforce` + `mail/sasl-failed` → `check-known-attacker-ip` と `check-dovecot-passdb-pam` を両方
-
-#### 5.5 check が未作成のカテゴリ
-
-暫定で playbook 直行を提示し、不足を `memory/detection_skill_design.md` の Yellow priority に追記する。
+判定が `unknown` の場合も **必ず `/review` を叩く** こと。`/review` 側で
+ヒアリング情報と突合して人間が attack_pattern を上書き確定する余地がある。
 
 ### 6. 状況サマリ生成
 
@@ -404,12 +515,12 @@ print(ClaudeBackend().explain_to_operator_ja(signals, validated, filtered_unmatc
 
 1. **検出された pattern_tag と攻撃者 IP / 試行 ID から、顧客にしか答えられない質問だけを抽出**
    - ✅ 「obuchi 氏は本日出社?」 (顧客の人事情報)
-   - ✅ 「14:37 UTC に WP 管理画面で作業予定?」 (顧客の業務予定)
+   - ✅ 「14:37 JST に WP 管理画面で作業予定?」 (顧客の業務予定)
    - ❌ 「161.33.12.212 はどこから?」 (これは whois でわかる、聞くな)
    - ❌ 「ログのこの行は何?」 (技術調査係が読むべき、聞くな)
 
 2. **3〜6 個に絞る**。多すぎると電話が長くなり顧客対応力評価で不利。
-3. **時刻は JST に変換**。顧客は UTC で作業時刻を覚えていない。
+3. **時刻は JST のまま**。顧客は JST で作業時刻を覚えている (本 skill は全段 JST で動く)。
 4. **封じ込め前なら「サービス停止許容度」を必ず 1 つ入れる** (Phase 3 リーダー判断で必要)。
 5. **既侵害 (§0.5) の前提 — 「初めて起きたか?」とは聞かない**。代わりに「直近で似た症状の前兆はありましたか?」と聞く。
 6. **生成できる質問が 0 件なら、空リストではなく「□ 追加聞き取り不要 (検出シグナルから業務影響/帰属が明確)」と出す**。
@@ -437,18 +548,33 @@ print(ClaudeBackend().explain_to_operator_ja(signals, validated, filtered_unmatc
 ### 8.1 incident_id の確定
 
 ```bash
-# /incident 起動時に確定 (時間窓 + ホスト)
-TODAY="$(date -u +%Y-%m-%d)"
-WINDOW_START="${INCIDENT_WINDOW_START:-$(date -u +%H:%M)}"   # 引数 $1 から HH:MM 抽出
-HOST="${2:-victor}"                                            # 引数 $2 (主要嫌疑ホスト)
-INCIDENT_ID="${TODAY}_${WINDOW_START}_${HOST}"
+# /incident 起動時に確定 (時間窓 + ホスト) — ホスト引数は省略可・複数可
+TODAY="$(TZ=Asia/Tokyo date +%Y-%m-%d)"
+WINDOW_START="${INCIDENT_WINDOW_START:-$(TZ=Asia/Tokyo date +%H:%M)}"   # 引数 $1 から HH:MM 抽出 (JST)
+
+# 引数 $2..$N をホスト群として捕捉。省略時は "both"
+shift                                # $1 (時間窓) 消費
+HOSTS_RAW="$*"                       # "victor bravo" or "victor" or "" or "both"
+[ -z "$HOSTS_RAW" ] && HOSTS_RAW="both"
+# ホスト名を sort + uniq + 区切りで正規化 (順不同で同じ INCIDENT_ID にする)
+HOST_LABEL="$(echo "$HOSTS_RAW" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' '_' | sed 's/_$//')"
+[ -z "$HOST_LABEL" ] && HOST_LABEL="both"
+
+INCIDENT_ID="${TODAY}_${WINDOW_START}_${HOST_LABEL}"
 INCIDENT_DIR="data/incidents/${INCIDENT_ID}"
 mkdir -p "$INCIDENT_DIR"
 echo "INCIDENT_ID=${INCIDENT_ID}"
 echo "INCIDENT_DIR=${INCIDENT_DIR}"
+echo "PRIMARY_HOSTS=${HOSTS_RAW} (label=${HOST_LABEL})"
 ```
 
-このシェル変数を **§1〜§7 の全段階で export** しておけば、後段の /check / /review / /playbook / /report が同じディレクトリに JSON を書ける。
+**正規化例**:
+- `/incident 13:00-13:30` → `2026-05-04_13:00_both`
+- `/incident 13:00-13:30 victor` → `2026-05-04_13:00_victor`
+- `/incident 13:00-13:30 victor bravo` → `2026-05-04_13:00_bravo_victor` (sort 後、順不同で同じ ID)
+- `/incident 13:00-13:30 bravo victor` → `2026-05-04_13:00_bravo_victor` (同上)
+
+このシェル変数を **§1〜§7 の全段階で export** しておけば、後段の /review / /report / /ticket が同じディレクトリに JSON を書ける。
 
 ### 8.2 JSON 書き出し（helper 経由）
 
@@ -468,16 +594,18 @@ cat <<'JSON_EOF' | scripts/emit_skill_json.sh incident --actor ai_human
     ],
     "mock_patches": ["..."],
     "claude_patches": ["..."],
-    "routing": {"category": "wp-tamper|dns-tamper|ddos|phishing|ransomware", "playbook": "/playbook:..."},
+    "attack_pattern":    "ddos|dns-tamper|phishing|ransomware|wp-tamper|unknown",
+    "attack_subpattern": "http-flood|dns-amplification|syn-flood|nsupdate-driven|axfr-leak|cache-poison|inbound-spear|broad-cast|receiver-pivot|actual-encryption|lateral-only|internal-misuse|rainloop-cve|php-rfi-lfi|xmlrpc-brute|htaccess-rce|",
+    "attack_pattern_reasoning": "<§4.2 で Claude が出した 3〜6 行の根拠>",
     "soc_summary": "1-2 段落の人間向け要約",
     "customer_questions": ["...", "..."],
     "preflight_anomalies_count": 0
   },
   "verdict": {
     "status": "🚨|⚠️|✅|info",
-    "summary": "<1-2 行: 何が起きてるか + 推奨次手順>"
+    "summary": "<1-2 行: 何が起きてるか + attack_pattern + 「次は /review」>"
   },
-  "next_skills": ["/check:check-...", "/playbook:..."]
+  "next_skills": ["/review"]
 }
 JSON_EOF
 ```
@@ -485,7 +613,7 @@ JSON_EOF
 helper が補完するメタデータ:
 - `skill`: `"incident"` (引数で指定)
 - `incident_id`: `INCIDENT_ID` env 経由で §8.1 で確定した値
-- `timestamp`: 実行時の ISO 8601 UTC
+- `timestamp`: 実行時の ISO 8601 JST (+09:00)
 - `actor`: `ai_human` (AI 提案 → 人間最終判断 + 顧客折り返し)
 
 保存先: `data/incidents/${INCIDENT_ID}/incident__<YYYYMMDDTHHMMSSZ>.json`
@@ -501,7 +629,7 @@ export INCIDENT_ID="${INCIDENT_ID}"
 export INCIDENT_DIR="${INCIDENT_DIR}"
 ```
 
-/check / /review / /playbook / /report は `${INCIDENT_ID}` が渡されていれば同じディレクトリに JSON を追記する。
+/review / /report / /ticket は `${INCIDENT_ID}` が渡されていれば同じディレクトリに JSON を追記する。
 
 ---
 

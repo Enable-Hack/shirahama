@@ -77,6 +77,32 @@ def _parse_syslog_ts(raw: str, ref_year: int | None = None) -> str | None:
     return dt.isoformat()
 
 
+# IP 抽出: maillog / named / secure 各形式に対応。
+# Layer 3b cross-ref (mock_backend.filter_known_good_logs) と /check ルーティングのため
+# signals.evidence.ip を埋めるのが必須。
+_IP_RE = r"(\d{1,3}(?:\.\d{1,3}){3})"
+_IP_EXTRACTORS: list[Pattern[str]] = [
+    re.compile(rf"\brip={_IP_RE}"),                       # dovecot imap-login: rip=
+    re.compile(rf"\bclient=[^\[\s]*\[{_IP_RE}\]"),         # postfix client=name[ip]
+    re.compile(rf"\bclient\s*@0x[0-9a-f]+\s+{_IP_RE}"),    # bind named: client @0x.. ip#port
+    re.compile(rf"\bfrom\s+{_IP_RE}\b"),                   # sshd Failed password from <ip>
+    re.compile(rf"\brelay=[^\[\s]*\[{_IP_RE}\]"),          # sendmail relay=name[ip]
+    re.compile(rf"\bfrom=<[^>]*>\s+\[{_IP_RE}\]"),         # sendmail from=<x> [ip]
+    re.compile(rf"\[{_IP_RE}\]:\d+"),                      # generic [ip]:port
+]
+
+
+def _extract_ip(line: str) -> str:
+    """syslog-form 1 行から代表的な送信元 IPv4 を抽出する。
+    複数形式をフォールバック試行し、最初にマッチしたものを返す。
+    見つからなければ空文字。"""
+    for rx in _IP_EXTRACTORS:
+        m = rx.search(line)
+        if m:
+            return m.group(1)
+    return ""
+
+
 # ─── 検出パターン（公開定数。受講者が拡張可能） ───────────
 # 各タプル: (コンパイル済み正規表現, 識別タグ)
 
@@ -639,6 +665,8 @@ def analyze_named(lines: list[str], return_unmatched: bool = False) -> list[Sign
     total_query = 0
     for line in lines:
         matched = False
+        line_ip = _extract_ip(line)
+        line_ts = _parse_syslog_ts(line) or ""
         # ANY クエリ比率の集計 (amplification 判定用)
         if re.search(r"(?i)query:", line):
             total_query += 1
@@ -648,22 +676,25 @@ def analyze_named(lines: list[str], return_unmatched: bool = False) -> list[Sign
         for pattern, tag in DNS_PATTERNS:
             m = pattern.search(line)
             if m:
+                evidence = {
+                    "pattern_tag": tag,
+                    "matched_substr": m.group(0),
+                    "raw_line": line[:300],
+                }
+                if line_ip:
+                    evidence["ip"] = line_ip
                 signals.append(Signal(
                     type="dns",
                     path=line[:200],
                     severity="high" if "unauthorized" in tag else "medium",
-                    evidence={
-                        "pattern_tag": tag,
-                        "matched_substr": m.group(0),
-                        "raw_line": line[:300],
-                    },
-                    timestamp="",
+                    evidence=evidence,
+                    timestamp=line_ts,
                 ))
                 matched = True
                 break  # 同一行で複数 tag は付けない
 
         if not matched and return_unmatched:
-            unmatched_logs.append({"raw": line, "type": "named", "ts": _parse_syslog_ts(line)})
+            unmatched_logs.append({"raw": line, "type": "named", "ts": line_ts or None})
 
     # ANY 比率 amplification
     if total_query >= 50 and any_count / max(total_query, 1) >= DNS_AMPLIFICATION_RATIO:
@@ -696,6 +727,8 @@ def analyze_secure(lines: list[str], return_unmatched: bool = False) -> list[Sig
 
     for line in lines:
         matched = False
+        line_ip = _extract_ip(line)
+        line_ts = _parse_syslog_ts(line) or ""
         # SSH brute 用の集計を併走
         m = re.search(r"(?i)Failed password for (?:invalid user )?\S+ from (\S+)", line)
         if m:
@@ -709,21 +742,24 @@ def analyze_secure(lines: list[str], return_unmatched: bool = False) -> list[Sig
                     matched = True
                     break
                 severity = "high" if tag.startswith("privesc/") else "medium"
+                evidence = {
+                    "pattern_tag": tag,
+                    "matched_substr": m.group(0),
+                    "raw_line": line[:300],
+                }
+                if line_ip:
+                    evidence["ip"] = line_ip
                 signals.append(Signal(
                     type=tag.split("/")[0],
                     path=line[:200],
                     severity=severity,
-                    evidence={
-                        "pattern_tag": tag,
-                        "matched_substr": m.group(0),
-                        "raw_line": line[:300],
-                    },
-                    timestamp="",
+                    evidence=evidence,
+                    timestamp=line_ts,
                 ))
                 matched = True
                 break
         if not matched and return_unmatched:
-            unmatched_logs.append({"raw": line, "type": "secure", "ts": _parse_syslog_ts(line)})
+            unmatched_logs.append({"raw": line, "type": "secure", "ts": line_ts or None})
 
     # SSH brute 集約
     for src_ip, cnt in ssh_fail_count.items():
@@ -756,20 +792,25 @@ def analyze_maillog(lines: list[str], return_unmatched: bool = False) -> list[Si
 
     for line in lines:
         matched = False
+        line_ip = _extract_ip(line)
+        line_ts = _parse_syslog_ts(line) or ""
         # 単発パターン
         for pattern, tag in MAIL_PATTERNS:
             m = pattern.search(line)
             if m:
+                evidence = {
+                    "pattern_tag": tag,
+                    "matched_substr": m.group(0),
+                    "raw_line": line[:300],
+                }
+                if line_ip:
+                    evidence["ip"] = line_ip
                 signals.append(Signal(
                     type="mail",
                     path=line[:200],
                     severity="medium",
-                    evidence={
-                        "pattern_tag": tag,
-                        "matched_substr": m.group(0),
-                        "raw_line": line[:300],
-                    },
-                    timestamp="",
+                    evidence=evidence,
+                    timestamp=line_ts,
                 ))
                 matched = True
                 break
@@ -777,9 +818,9 @@ def analyze_maillog(lines: list[str], return_unmatched: bool = False) -> list[Si
         m = re.search(r"client=[^\[]*\[(\d+\.\d+\.\d+\.\d+)\]", line)
         if m:
             sender_count[m.group(1)] += 1
-        
+
         if not matched and return_unmatched:
-            unmatched_logs.append({"raw": line, "type": "maillog", "ts": _parse_syslog_ts(line)})
+            unmatched_logs.append({"raw": line, "type": "maillog", "ts": line_ts or None})
 
     # burst 検出
     for ip, cnt in sender_count.items():

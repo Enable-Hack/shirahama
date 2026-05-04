@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 from typing import Optional
 
-from _common import emit, stream_lines
+from _common import emit, stream_lines, to_jst_iso
 
 
 SYSLOG_RE = re.compile(
@@ -29,7 +29,7 @@ def parse_line(line: str) -> Optional[dict]:
     g = m.groupdict()
     try:
         year = datetime.now().year
-        ts_iso = datetime.strptime(f"{year} {g['ts']}", "%Y %b %d %H:%M:%S").isoformat()
+        ts_iso = to_jst_iso(datetime.strptime(f"{year} {g['ts']}", "%Y %b %d %H:%M:%S"))
     except ValueError:
         ts_iso = None
 

@@ -1,0 +1,52 @@
+{
+  "skill": "report",
+  "incident_id": "2026-05-04_12:00_victor",
+  "timestamp": "2026-05-05T00:50:10+09:00",
+  "actor": "ai_human",
+  "inputs": {
+    "incident_id": "2026-05-04_12:00_victor",
+    "review_path": "data/incidents/2026-05-04_12:00_victor/review__20260505T004615.json"
+  },
+  "outputs": {
+    "completion_mode": "complete",
+    "completion_checklist": {
+      "直接原因特定": true,
+      "拡大再発不可": true,
+      "影響範囲確定": true,
+      "サービス正常": true,
+      "残タスク整理": true
+    },
+    "incident": {
+      "customer": "白浜 Web 担当 (com1.local 運用部)",
+      "attack_pattern": "ddos/http-flood",
+      "source_ip": "161.33.12.212",
+      "attack_window_jst": "2026-05-04T12:10:41 - 2026-05-04T12:12:27",
+      "containment_time_jst": "2026-05-04T15:42:27",
+      "affected_asset": "victor (com1.local Web) - 応答遅延のみ",
+      "damage": {
+        "defacement": false,
+        "exfiltration": false,
+        "lateral_movement": false
+      }
+    },
+    "actions_completed": [
+      {
+        "id": "C-1",
+        "description": "Apache blocklist.conf + httpd reload",
+        "time": "2026-05-04T15:42:27"
+      },
+      {
+        "id": "C-2",
+        "description": "WordPress siteurl → http://com1.local",
+        "time": "2026-05-04"
+      }
+    ]
+  },
+  "verdict": {
+    "status": "✅",
+    "summary": "完全完了。テンプレ1/2/5出力。D-1/B-1/B-2は顧客確認待ち。"
+  },
+  "next_skills": [
+    "/ticket"
+  ]
+}

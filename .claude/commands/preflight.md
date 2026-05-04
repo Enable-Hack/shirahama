@@ -1,4 +1,5 @@
 ---
+model: claude-haiku-4-5
 description: 受電前 / 受電直後 / /incident 投入前のベースライン確認。両機並行でサービス稼働 / listen ポート / 直近変更 / 負荷を取得し、異常を flag する
 ---
 
@@ -19,10 +20,22 @@ description: 受電前 / 受電直後 / /incident 投入前のベースライン
 - victor (Rocky / 本番は Rocky 同等) と bravo (デモ Rocky / 本番 FreeBSD) で OS 差を吸収
 - /incident §0〜§0.6 を読み返してから実行 (本番サーバ定数 / 既侵害前提 / 触らない哲学)
 
+**本番環境前提 (必読)**: 本 skill を呼ぶ前に必ず `docs/booth1_production.md` を Read ツールで読む。Booth1 (com1.local) のネットワーク構成 / 認証情報 / OS 差分 / 触禁機器 / DHCP 配布範囲 / CIC DNS 関係 / 既侵害前提などの本番固有情報をすべて踏まえてから判断・コマンド生成する。本番接続前に必ず Read。
+
 ```bash
 SSH_VICTOR="${SSH_VICTOR:-manage@10.1.1.2}"
 SSH_BRAVO="${SSH_BRAVO:-manage@10.1.1.1}"
 SHIRAHAMA_DIR="${SHIRAHAMA_DIR:-/Users/ryu/Desktop/shirahama}"
+cd "$SHIRAHAMA_DIR"
+
+# INCIDENT_ID 自動検出 (env > .current_id > 最新 dir > _unscoped fallback)
+if [ -z "${INCIDENT_ID:-}" ]; then
+    if [ -f "data/incidents/.current_id" ]; then
+        INCIDENT_ID="$(cat data/incidents/.current_id)"
+    fi
+    [ -z "$INCIDENT_ID" ] && INCIDENT_ID="$(ls -1t data/incidents/ 2>/dev/null | grep -v '^\.' | head -1)"
+fi
+export INCIDENT_ID  # ← emit_skill_json.sh helper に渡すため必須
 ```
 
 ## 1. 取得項目（両機並行）
@@ -142,7 +155,7 @@ esac
 | `/var/log` 使用率 > 90% | ⚠️ ログあふれ — rotation 確認 |
 | `/etc` 配下に直近 1h 以内の変更 | 🚨 改ざん疑い — 具体ファイル名を出す |
 | listen ポートに想定外（8080 / 31337 / 4444 / 6667 等） | ⚠️ 不審サービス — `ss -tlnp` 詳細確認 |
-| `last` 出力に既侵害 IP (10.1.129.0/24) | 🚨 §0.5 既侵害前提 — `/check:check-known-attacker-ip` を即起動 |
+| `last` 出力に既侵害 IP (10.1.129.0/24) | 🚨 §0.5 既侵害前提 — /incident で時間窓指定 → /review で 4 列突合し既侵害 vs 急性発症切り分け |
 
 判定ロジックは `run_preflight` 内で実行。サマリは末尾でカウントして出す。
 
@@ -182,7 +195,7 @@ load average: 0.05, 0.07, 0.09
 ─── /preflight summary ───
 🚨 1 件: victor last に 10.1.129.10 由来ログイン (既侵害 §0.5)
 ⚠️ 0 件
-推奨次手順: /incident <時間窓> victor — まず /check:check-known-attacker-ip で 10.1.129.10 の動向確認
+推奨次手順: /incident <時間窓> victor (受電内容に合わせて起動) → /review で 4 列突合し 10.1.129.10 由来の動向を判定
 ```
 
 ## 5. オプション動作
@@ -230,7 +243,7 @@ baseline JSON の最小スキーマ：
 
 - 異常 0 件 → そのまま `/incident <時間窓> <ホスト>` に進む
 - 🚨 1 件以上 → 受電担当に「受電内容と整合する症状を観測」を伝え、`/incident` 起動
-- 🚨 が「既侵害 IP 由来ログイン」のみ → 平時運用扱い (§0.5)、ただし `/check:check-known-attacker-ip` は必ず併用
+- 🚨 が「既侵害 IP 由来ログイン」のみ → 平時運用扱い (§0.5)、ただし /incident → /review で 4 列突合は必ず実施 (preflight ✅ + incident ✅ で既侵害確定)
 
 ## 8. JSON 永続化（HTML dashboard 連携）
 
@@ -242,7 +255,7 @@ baseline JSON の最小スキーマ：
 {
   "skill": "preflight",
   "incident_id": "<id or auto-generated>",
-  "timestamp": "<ISO 8601 UTC>",
+  "timestamp": "<ISO 8601 JST (+09:00)>",
   "actor": "ai_auto",
   "inputs": {
     "target": "both | victor | bravo",
@@ -267,7 +280,7 @@ baseline JSON の最小スキーマ：
     "status": "🚨 | ⚠️ | ✅",
     "summary": "anomalies 集計の 1 行 (例: 🚨 1 / ⚠️ 0 / 既侵害ログイン 1 件)"
   },
-  "next_skills": ["/incident <window> <host>", "/check:check-known-attacker-ip"]
+  "next_skills": ["/incident <window> <host>", "/review"]
 }
 ```
 
@@ -312,7 +325,7 @@ JSON_EOF
 
 - `tee /tmp/preflight_state.json` で `/incident §0.4` が読む最新状態を更新
 - `scripts/emit_skill_json.sh preflight` でメタデータ (skill / timestamp / actor) を補完しつつ `data/incidents/<id>/preflight__*.json` に永続化
-- `INCIDENT_ID` が export されてない (= `/incident` 前単独実行) ときは helper 側で fallback id (`${TODAY_UTC}T${HMS}_unscoped`) を生成。`/tmp/preflight_state.json` だけが最新で残るので運用上は問題なし
+- `INCIDENT_ID` が export されてない (= `/incident` 前単独実行) ときは helper 側で fallback id (`${TODAY_JST}T${HMS}_unscoped`) を生成。`/tmp/preflight_state.json` だけが最新で残るので運用上は問題なし
 
 ### 8.3 dashboard 表示
 
@@ -322,7 +335,19 @@ JSON_EOF
 
 - /incident §0〜§0.6 — 本番定数 / 既侵害前提 / 触らない哲学
 - /incident §0.4 — `/tmp/preflight_state.json` を読み込んで §4 Claude 推論にブースト
-- /check:check-baseline-hardening — SELinux/firewalld/iptables の **設定** 確認 (preflight より深掘り)
-- /check:check-known-attacker-ip — 10.1.129.0/24 由来ログインの詳細
+- archive/checks/check-static-recon.md — SELinux/firewalld/iptables 等の静的設定確認 (歴史参照、現行は AI が ad-hoc 実施 or /review が必要に応じて指示)
+- archive/checks/check-known-attacker-ip.md — 10.1.129.0/24 由来ログインの確認手順 (歴史参照、現行は /incident → /review で 4 列突合)
 - docs/22_デモE2E実機検証_20260503.md — preflight の前提となる E2E 試験 runbook
 - scripts/emit_skill_json.sh — JSON 永続化 helper
+
+---
+
+## §10. 次に打つコマンド (案内)
+
+```text
+─── 次のステップ ───
+  /incident <時間窓> [host...]   ← 引数なしの場合は両機。例:
+                                    /incident 13:00-13:30 victor
+                                    /incident 13:00-13:30 victor bravo
+  ↓ その後 /review → 採択 → 対応 → /report → /call_close → /ticket
+```

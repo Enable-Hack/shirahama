@@ -1,0 +1,71 @@
+{
+  "skill": "check-known-attacker-ip",
+  "incident_id": "2026-05-04_04:34_victor",
+  "timestamp": "2026-05-04T04:52:22Z",
+  "actor": "ai_auto",
+  "inputs": {
+    "target_host": "both",
+    "known_ips": [
+      "161.33.12.212",
+      "10.1.129.10"
+    ]
+  },
+  "outputs": {
+    "patterns_matched": [
+      {
+        "id": "A",
+        "label": "KNOWN_IP からの SSH Accepted",
+        "verdict": "❌ なし (SSH 侵入は今窓内で未成功)"
+      },
+      {
+        "id": "B",
+        "label": "配布アカウント以外の SSH Accepted",
+        "verdict": "❌ なし"
+      },
+      {
+        "id": "C",
+        "label": "authorized_keys 直近更新",
+        "verdict": "🚨 確定 — /home/obuchi/.ssh/authorized_keys に attacker@10.1.129.10 鍵設置 (2026-05-03 08:53 UTC)"
+      },
+      {
+        "id": "D",
+        "label": "攻撃元 IP の Web 異常活動",
+        "verdict": "🚨 確定 — 161.33.12.212 が 2026-05-03 10:06 UTC に /wp-login.php × 5 + /xmlrpc.php × 15 攻撃"
+      },
+      {
+        "id": "E",
+        "label": "IMAP brute 試行",
+        "verdict": "⚠️ 進行中 — 161.33.12.212 が obuchi 含む 10 ID を辞書攻撃"
+      }
+    ],
+    "evidence": [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBkn4qK8ilmeT9G7p2XfYQs+vY3tEmL2+EhUJsVqHnxe attacker@10.1.129.10 (obuchi authorized_keys)",
+      "161.33.12.212 - [03/May/2026:10:06:50] POST /xmlrpc.php HTTP/1.1 200 403",
+      "May  4 04:35:10 dovecot imap-login: auth failed user=<obuchi> rip=161.33.12.212"
+    ],
+    "authorized_keys_detail": {
+      "path": "/home/obuchi/.ssh/authorized_keys",
+      "mtime": "2026-05-03T08:53:33+00:00",
+      "key_comment": "attacker@10.1.129.10",
+      "key_type": "ssh-ed25519"
+    },
+    "httpd_attack_detail": {
+      "attacker_ip": "161.33.12.212",
+      "timestamp": "2026-05-03T10:06:45-10:06:59+00:00",
+      "targets": [
+        "/wp-login.php (x5, HTTP 200)",
+        "/xmlrpc.php (x15+, HTTP 200)"
+      ]
+    }
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "Pattern C+D 確定: attacker@10.1.129.10 の鍵が obuchi に設置済 (5/3 08:53)。161.33.12.212 が WP XML-RPC + IMAP brute を継続中。obuchi 経由でいつでも SSH 侵入可能な状態。"
+  },
+  "next_skills": [
+    "/check:check-obuchi-777-hijack",
+    "/check:check-wp-xmlrpc-brute",
+    "/playbook:ransomware",
+    "/playbook:phishing"
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "skill": "incident",
+  "incident_id": "2026-05-04_12:00_victor",
+  "timestamp": "2026-05-04T12:55:00+09:00",
+  "actor": "ai_auto",
+  "inputs": {
+    "window_jst": "12:00-12:30",
+    "hosts": ["victor"]
+  },
+  "outputs": {
+    "attack_pattern": "ddos",
+    "attack_subpattern": "http-flood",
+    "attack_pattern_reasoning": "victor /var/log/httpd/access_log で単一 IP 161.33.12.212 から 2480 件の GET / 連打 (12:10 開始)、Referer 'TESTING_PURPOSES_ONLY' は LOIC 系攻撃ツール痕跡。/var/www 配下 24h 以内ファイル改変ゼロ → wp-tamper の可能性除外。応答コードは全て 200 で増幅型ではない、宛先は victor:80 (httpd) のみ → http-flood と判定 (dns-amplification や syn-flood ではない)",
+    "signals": [
+      {
+        "pattern_tag": "ddos/http-flood",
+        "severity": "🚨",
+        "evidence": {
+          "ip": "161.33.12.212",
+          "count": 2480,
+          "ua": "Mozilla/4.0 (compatible; MSIE 8.0...)",
+          "referer": "TESTING_PURPOSES_ONLY",
+          "first_seen": "2026-05-04T12:10:41Z",
+          "method_path": "GET /",
+          "status": 200
+        }
+      },
+      {
+        "pattern_tag": "noise/permission-denied-listen",
+        "severity": "⚠️",
+        "evidence": {
+          "log": "error_log",
+          "detail": "[::]:80 Permission denied 連発 (11:53〜)、IPv6 listen の権限問題で本攻撃と無関係"
+        }
+      }
+    ],
+    "preflight_context": "preflight 異常 5 件中 victor 23/tcp telnet listen のみ 🚨 (本案件と無関係)。3306 直接公開 ⚠️ も DDoS と無関係。preflight ベースラインは「攻撃元の IP は受電前から到達可能」を示すのみ"
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "🚨 ddos/http-flood 確定 — 単一 IP 2480 req / 30min、改ざん痕跡なし"
+  },
+  "next_skills": [
+    {"skill": "/review", "hint": {"attack_pattern": "ddos", "attack_subpattern": "http-flood"}}
+  ]
+}

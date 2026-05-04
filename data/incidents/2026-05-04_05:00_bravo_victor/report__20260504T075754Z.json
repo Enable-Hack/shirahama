@@ -1,0 +1,44 @@
+{
+  "skill": "report",
+  "incident_id": "2026-05-04_05:00_bravo_victor",
+  "timestamp": "2026-05-04T07:57:54.256808+00:00",
+  "actor": "ai_human",
+  "inputs": {
+    "triage_report_path": "data/incidents/2026-05-04_05:00_bravo_victor/",
+    "template_path": "docs/04_完了報告テンプレート.md"
+  },
+  "outputs": {
+    "completion_mode": "first_response_only",
+    "checklist": {
+      "直接原因特定": true,
+      "拡大再発しない状態": false,
+      "影響範囲確定": true,
+      "サービス正常稼働": true,
+      "残タスク整理": true,
+      "顧客追加質問への準備": true,
+      "記録保管": true
+    },
+    "templates": {
+      "customer_phone": "顧客担当者向け電話対応:\n【重要情報】\n- 攻撃元: 161.33.12.212 (3 日間継続)\n- 既侵害アカウント: obuchi (May 3 17:53 JST に SSH 公開鍵が attacker@10.1.129.10 から追加)\n- 現在の脅威: obuchi 経由での SSH 乗っ取り可能性\n- 情報漏洩: 現在のところ確認なし\n\n本インシデントの一次対応は完了しました。リーダー承認後に最終的な封じ込めコマンドを実行し、最終報告書を送付します。",
+      "executive_short": "経営層向け 300 字: 認証総当たり攻撃と SSH バックドア痕跡を検知。情報漏洩は未確認。封じ込めコマンドは準備済み、リーダー承認待ち。",
+      "users": "obuchi 氏個別連絡: SSH 公開鍵が不正に追加されています。パスワード変更と鍵再発行を実施してください。",
+      "external": "外部第三者通報者向け: 通報ありがとうございます。確認の結果、認証試行は失敗しており現時点で情報漏洩は確認されていません。",
+      "email_record": "メール正式記録 (顧客担当者): 添付の詳細インシデントレポートをご参照ください。"
+    },
+    "remaining_items": [
+      "リーダー承認後に封じ込め 4 コマンド実行 (authorized_keys 削除 / chmod 700 / 161.33.12.212 REJECT / dovecot 設定見直し)",
+      "本日 16:00 JST に最終報告書を顧客送付",
+      "完全完了モードでの /report 再実行 (封じ込め後)"
+    ],
+    "next_report_time_jst": "2026-05-04 16:00 JST"
+  },
+  "verdict": {
+    "status": "⚠️",
+    "summary": "一次対応完了。封じ込めはリーダー承認後に実施 → 完全完了モードで再 /report 必要。"
+  },
+  "next_skills": [
+    "/playbook:phishing (実コマンド実行 — 人間が settings.production.json ゲート越し)",
+    "/report (封じ込め完了後に再実行)",
+    "/ticket (T+90 で PukiWiki マークアップ生成)"
+  ]
+}

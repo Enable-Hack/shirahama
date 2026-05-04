@@ -1,4 +1,5 @@
 ---
+model: claude-haiku-4-5
 description: トリアージ + 対応記録 (shirahama_test.md 等) から PukiWiki トラブルチケット用マークアップを 1 件分生成する
 ---
 
@@ -23,27 +24,60 @@ description: トリアージ + 対応記録 (shirahama_test.md 等) から PukiW
 
 ## §0. 前提
 
-- 入力: `/incident` `/check:*` `/playbook:*` の出力をまとめた Markdown (shirahama_test.md 同等構造)
+- 入力: `/incident` `/review` `/report` の出力をまとめた Markdown (shirahama_test.md 同等構造)
 - 出力: **PukiWiki マークアップで画面表示**。投稿先 `http://133.42.49.140/trouble_ticket_137/` (whiskey / E5mA9cF3) — 投稿は人間が手で行う (認証情報を Claude に渡さない方針)
 - 1 回の呼び出しで **1 インシデント分** のチケットを生成。複数件ある場合は引数を変えて複数回呼ぶ
 
 ---
 
+
+**本番環境前提 (必読)**: 本 skill を呼ぶ前に必ず `docs/booth1_production.md` を Read ツールで読む。Booth1 (com1.local) のネットワーク構成 / 認証情報 / OS 差分 / 触禁機器 / DHCP 配布範囲 / CIC DNS 関係 / 既侵害前提などの本番固有情報をすべて踏まえてから判断・コマンド生成する。
+本番接続前に必ず Read。
+
 ## §1. 入力読み込み
 
 ```bash
 SHIRAHAMA_DIR="${SHIRAHAMA_DIR:-/Users/ryu/Desktop/shirahama}"
-REPORT_PATH="${1:-$HOME/Desktop/shirahama_test.md}"
+INCIDENT_ID="${1:-}"
+cd "$SHIRAHAMA_DIR"
 
-if [ ! -f "$REPORT_PATH" ]; then
-    echo "❌ トリアージ/対応記録が見つからない: $REPORT_PATH"
-    echo "   /incident → /playbook:* を先に実行するか、引数でパスを指定してください"
+if [ -z "$INCIDENT_ID" ]; then
+    if [ -f "data/incidents/.current_id" ]; then
+        INCIDENT_ID="$(cat data/incidents/.current_id)"
+    fi
+    [ -z "$INCIDENT_ID" ] && INCIDENT_ID="$(ls -1t data/incidents/ 2>/dev/null | grep -v '^\.' | head -1)"
+fi
+export INCIDENT_ID  # ← emit_skill_json.sh helper に渡すため必須
+INCIDENT_DIR="data/incidents/${INCIDENT_ID}"
+
+# 全 skill JSON を集約: hearing / incident / review / report
+HEARING_FILE="$(
+  for f in ${INCIDENT_DIR}/*.json; do
+    [ -f "$f" ] || continue
+    if python3 -c "import json,sys; sys.exit(0 if json.load(open('$f')).get('skill')=='hearing' else 1)" 2>/dev/null; then
+      stat -f '%m %N' "$f" 2>/dev/null || stat -c '%Y %n' "$f" 2>/dev/null
+    fi
+  done | sort -rn | head -1 | awk '{print $2}'
+)"
+INCIDENT_FILE="$(ls -1t ${INCIDENT_DIR}/incident__*.json 2>/dev/null | head -1)"
+REVIEW_FILE="$(ls -1t ${INCIDENT_DIR}/review__*.json 2>/dev/null | head -1)"
+REPORT_FILE="$(ls -1t ${INCIDENT_DIR}/report__*.json 2>/dev/null | head -1)"
+LEGACY_PATH="${2:-$HOME/Desktop/shirahama_test.md}"
+
+if [ -z "$REPORT_FILE" ] && [ ! -f "$LEGACY_PATH" ]; then
+    echo "❌ report__*.json も legacy md も見つからない"
+    echo "   /report を先に実行するか、第 2 引数で md パスを指定してください"
     exit 1
 fi
 
 echo "─── /ticket §1 入力 ───"
-echo "  source : $REPORT_PATH ($(wc -l < $REPORT_PATH) 行)"
-echo "  target : http://133.42.49.140/trouble_ticket_137/"
+echo "  incident_id : ${INCIDENT_ID}"
+echo "  hearing     : ${HEARING_FILE:-<欠落>}"
+echo "  incident    : ${INCIDENT_FILE:-<欠落>}"
+echo "  review      : ${REVIEW_FILE:-<欠落>}"
+echo "  report      : ${REPORT_FILE:-<欠落、legacy md fallback>}"
+echo "  legacy md   : ${LEGACY_PATH} ($([ -f "$LEGACY_PATH" ] && wc -l < "$LEGACY_PATH" || echo 0) 行) [fallback]"
+echo "  target      : http://133.42.49.140/trouble_ticket_137/"
 ```
 
 その後 Claude は **Read ツールで `$REPORT_PATH` を全文読む**。
@@ -156,7 +190,7 @@ PukiWiki チケットの 5 フィールド (sccs2026_二次予選まとめ.md L.
 判定: ✅ 投稿可 / ⚠️ 一部「調査継続中」で投稿可 / ❌ 投稿不可 (情報不足)
 ```
 
-❌ の場合、不足項目をリストして **どの /check:* / /playbook:* をもう一度叩くべきか提示** (例: 「対処内容なし → /playbook:wp-tamper §6 を未実行、リーダー承認取って実行してから再生成」)。
+❌ の場合、不足項目をリストして **何が欠けているか提示** (例: 「対処内容なし → docs/recovery_cookbook.md §5 wp-tamper を未実施、リーダー承認後に ssh で実行してから再生成」「ヒアリング 6 軸不足 → 受電係に再確認 → /review 再実行」)。
 
 ---
 
@@ -242,3 +276,15 @@ JSON_EOF
 - `actor=ai_human` で「生成は AI、投稿は人間」を明示 (§0.6 触らない哲学と整合)
 - `pukiwiki_markup` には §3.1 のテンプレ全文をそのまま入れる (改行は `\n` でエスケープ)
 - 保存先: `data/incidents/${INCIDENT_ID}/ticket__<ts>.json`
+
+---
+
+## §10. 次に打つコマンド (案内)
+
+```text
+─── 次のステップ ───
+  1. PukiWiki マークアップを clipboard から貼り付けて投稿
+     http://133.42.49.140/trouble_ticket_137/ (whiskey / E5mA9cF3)
+  2. ⏹ ブラウザ補助セクションで「インシデント完了」ボタン
+  3. 次のインシデント来たら /new_incident <時刻> <host>
+```

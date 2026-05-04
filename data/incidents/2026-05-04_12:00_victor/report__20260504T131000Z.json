@@ -1,0 +1,23 @@
+{
+  "skill": "report",
+  "incident_id": "2026-05-04_12:00_victor",
+  "timestamp": "2026-05-04T13:10:00+09:00",
+  "actor": "ai_auto",
+  "inputs": {
+    "incident_json": "incident__20260504T125500Z.json",
+    "review_json": "review__20260504T130000Z.json",
+    "adopted_judgment": "D"
+  },
+  "outputs": {
+    "customer_email_subject": "[com1.local 障害] 12:00 頃の Web 応答遅延について (一次報告)",
+    "exec_summary": "単一 IP DDoS (HTTP flood)、12:10-12:50 約 40 分応答遅延、改ざん無し、攻撃元 IP 遮断済",
+    "user_notice": "com1.local の応答が遅くなる事象が発生しましたが復旧済です。データ漏えいや改ざんはありません。",
+    "supplementary_findings": [
+      "victor 23/tcp telnet listen (案件無関係、別 incident 起票推奨)",
+      "victor/bravo 3306 直接公開 (恒久対応別件)",
+      "victor httpd error_log [::]:80 Permission denied 連発 (IPv6 listen 権限問題)"
+    ]
+  },
+  "verdict": {"status": "✅", "summary": "顧客/経営層/ユーザ向け 3 種テンプレ生成済"},
+  "next_skills": ["/完了電話報告 (未実装)", "/ticket"]
+}

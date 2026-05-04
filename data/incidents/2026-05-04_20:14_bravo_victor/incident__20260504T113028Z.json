@@ -1,0 +1,136 @@
+{
+  "skill": "incident",
+  "incident_id": "2026-05-04_20:14_bravo_victor",
+  "timestamp": "2026-05-04T11:30:28Z",
+  "actor": "ai_auto",
+  "inputs": {
+    "window": "20:14-20:30",
+    "hosts": "victor bravo",
+    "logs_collected": [
+      "access_log",
+      "secure",
+      "maillog",
+      "messages",
+      "httpd_error_log",
+      "auth.log"
+    ]
+  },
+  "outputs": {
+    "analyzer_signals": [
+      {
+        "pattern_tag": "cmdi/system-call",
+        "severity": "critical",
+        "count": 1,
+        "ip": "161.33.12.212"
+      },
+      {
+        "pattern_tag": "cmdi/backtick-exec",
+        "severity": "critical",
+        "count": 1,
+        "ip": "161.33.12.212"
+      },
+      {
+        "pattern_tag": "webapp/dotfile-access",
+        "severity": "high",
+        "count": 9,
+        "ip": "161.33.12.212"
+      },
+      {
+        "pattern_tag": "sqli/union-select",
+        "severity": "high",
+        "count": 1,
+        "ip": "161.33.12.212"
+      },
+      {
+        "pattern_tag": "sqli/or-tautology",
+        "severity": "high",
+        "count": 1,
+        "ip": "161.33.12.212"
+      },
+      {
+        "pattern_tag": "path_traversal/dotdot-slash",
+        "severity": "high",
+        "count": 1,
+        "ip": "161.33.12.212"
+      },
+      {
+        "pattern_tag": "webapp/auth-bruteforce",
+        "severity": "high",
+        "count": 1,
+        "ip": "161.33.12.212"
+      },
+      {
+        "pattern_tag": "mail/sasl-failed",
+        "severity": "medium",
+        "count": 15,
+        "ip": "161.33.12.212"
+      },
+      {
+        "pattern_tag": "webapp/xmlrpc",
+        "severity": "low",
+        "count": 30,
+        "ip": "161.33.12.212"
+      },
+      {
+        "pattern_tag": "webapp/author-scan",
+        "severity": "low",
+        "count": 11,
+        "ip": "161.33.12.212"
+      },
+      {
+        "pattern_tag": "htaccess-rce-attempt",
+        "severity": "critical",
+        "count": 1,
+        "ip": "161.33.12.212",
+        "detail": "exec /var/www/cgi-bin/.my.cnf.6804 (cgid:error, Permission denied)"
+      }
+    ],
+    "mock_patches": [
+      "block:scanner-ua",
+      "block:sqli-union",
+      "block:dotfile",
+      "block:path-traversal",
+      "block:cmdi",
+      "rate_limit:xmlrpc"
+    ],
+    "claude_patches": [],
+    "routing": {
+      "category": "wp-tamper",
+      "attacker_ip": "161.33.12.212",
+      "checks": [
+        "check-htaccess-rce",
+        "check-wp-xmlrpc-brute",
+        "check-wp-config-leak",
+        "check-db-exposure",
+        "check-imap-auth-exposure",
+        "check-wp-rest-author-scan"
+      ],
+      "playbooks": [
+        "wp-tamper"
+      ]
+    },
+    "soc_summary": "161.33.12.212 が victor の WordPress サイトに対して大規模な自動攻撃を実施。XML-RPC ブルートフォース(30回)、ユーザー列挙(author-scan 11回)、dotfile アクセス(.my.cnf/.env等 9回)、コマンドインジェクション試行(backtick/system-call 各1回)、SQLインジェクション(UNION SELECT/OR tautology)を確認。特に Apache エラーログに .my.cnf.6804 を CGI として実行しようとした痕跡(Permission Denied で阻止済み)があり、htaccess 経由の RCE が試みられた可能性が高い。IMAP 認証失敗(mail/sasl-failed 15件)も同IPから確認。",
+    "customer_questions": [
+      "□ 20:14〜20:30(JST 05:14〜05:30)頃、WordPress 管理画面に心当たりのあるログイン操作はありましたか?",
+      "□ サイトの管理者アカウント以外に、XML-RPC を使うプラグインやモバイルアプリを利用していますか?",
+      "□ メールアカウント(IMAP接続)のパスワードを直近で変更しましたか、または変更予定がありましたか?",
+      "□ 161.33.12.212 という IP に心当たりはありますか?(委託業者・保守会社など)",
+      "□ 現在 Web サイトや受信メールの業務影響はありますか?サービス停止が必要な場合、許容できる停止時間を教えてください。"
+    ],
+    "preflight_anomalies_count": 0
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "161.33.12.212 による WordPress 多段攻撃(cmdi×2 critical / dotfile×9 / xmlrpc×30)。htaccess RCE 試行(阻止済)を確認。主カテゴリ: wp-tamper → /playbook:wp-tamper へ進む。"
+  },
+  "next_skills": [
+    "/check:check-htaccess-rce",
+    "/check:check-wp-xmlrpc-brute",
+    "/check:check-known-attacker-ip",
+    "/check:check-syslog-udp-injection",
+    "/check:check-wp-config-leak",
+    "/check:check-db-exposure",
+    "/check:check-imap-auth-exposure",
+    "/playbook:wp-tamper"
+  ]
+}

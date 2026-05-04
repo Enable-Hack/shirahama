@@ -1,0 +1,65 @@
+{
+  "skill": "report",
+  "incident_id": "2026-05-04_20:20_bravo_victor",
+  "timestamp": "2026-05-04T21:05:00+09:00",
+  "actor": "ai_human",
+  "inputs": {
+    "triage_report_path": "~/Desktop/shirahama_test.md",
+    "template_path": "docs/04_完了報告テンプレート.md"
+  },
+  "outputs": {
+    "completion_mode": "first_response_only",
+    "checklist": {
+      "直接原因特定": "✅",
+      "拡大再発防止": "✅ (部分的 — IP block 承認待ち)",
+      "影響範囲確定": "✅",
+      "サービス正常稼働": "❌ (victor named INACTIVE)",
+      "残タスク整理": "❌ (3 件未実施)",
+      "顧客質問対応準備": "△",
+      "記録保存": "✅"
+    },
+    "failing_items": [
+      "サービス正常稼働: victor named が INACTIVE のまま",
+      "残タスク整理: named 原因確認・SMTP 詳細分析・IP block 実装待ち"
+    ],
+    "remaining_work": [
+      {
+        "id": "task_1",
+        "title": "victor named 停止原因確認",
+        "description": "journalctl -u named --since 2026-05-04 で停止原因を調査。攻撃起因 vs 設定 vs クラッシュを判定",
+        "owner": "technical",
+        "deadline": "2026-05-04 21:00 JST",
+        "priority": "high"
+      },
+      {
+        "id": "task_2",
+        "title": "/check:check-imap-auth-exposure で SMTP AUTH 詳細確認",
+        "description": "試行されたユーザ ID リストと成否を確認。/check 実行待ち",
+        "owner": "technical",
+        "deadline": "2026-05-04 21:15 JST",
+        "priority": "medium"
+      },
+      {
+        "id": "task_3",
+        "title": "IP 161.33.12.212 のブロック実装",
+        "description": "nginx / firewalld で deny 追加。リーダー承認後",
+        "owner": "technical",
+        "deadline": "2026-05-04 21:30 JST",
+        "priority": "high"
+      }
+    ],
+    "templates": {
+      "customer_contact": "顧客担当者向け電話文面（一次対応完了版）",
+      "next_report_eta": "2026-05-04 21:30 JST"
+    }
+  },
+  "verdict": {
+    "status": "⚠️",
+    "summary": "一次対応完了。サービス正常稼働 + 残タスク整理が揃わないため。本日 21:30 までに短期タスク 3 件実施予定"
+  },
+  "next_skills": [
+    "victor: journalctl -u named 確認",
+    "/check:check-imap-auth-exposure",
+    "IP block 実装 (承認後)"
+  ]
+}

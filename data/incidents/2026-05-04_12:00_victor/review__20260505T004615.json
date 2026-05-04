@@ -1,0 +1,263 @@
+{
+  "skill": "review",
+  "incident_id": "2026-05-04_12:00_victor",
+  "timestamp": "2026-05-05T00:46:15+09:00",
+  "actor": "ai_auto",
+  "inputs": {
+    "incident_id": "2026-05-04_12:00_victor",
+    "hearing_consumed": true,
+    "preflight_consumed": true,
+    "incident_consumed": true,
+    "review_revision": 3,
+    "revision_reason": "[C-1] blocklist.conf + httpd reload 実行完了 / [C-2] WordPress siteurl 修正完了 を検証・確認"
+  },
+  "outputs": {
+    "attack_pattern_received": "ddos",
+    "attack_subpattern_received": "http-flood",
+    "comparison": [
+      {
+        "axis": "影響サービス",
+        "customer": "web (WordPress)",
+        "preflight": "httpd active",
+        "incident": "http-flood (victor:80) 2480 req",
+        "verdict": "match"
+      },
+      {
+        "axis": "応答遅延",
+        "customer": "重い",
+        "preflight": "load 正常",
+        "incident": "2480 req flood",
+        "verdict": "partial_match"
+      },
+      {
+        "axis": "改ざん",
+        "customer": "改ざんかもしれない",
+        "preflight": "/etc 変更なし",
+        "incident": "/var/www PHP 変更ゼロ",
+        "verdict": "mismatch"
+      },
+      {
+        "axis": "SEO不審リンク",
+        "customer": "SEO目的の不審リンク",
+        "preflight": "skipped",
+        "incident": "DDoS のみ",
+        "verdict": "partial_match"
+      },
+      {
+        "axis": "メール",
+        "customer": "メールは生きてる",
+        "preflight": "dovecot active",
+        "incident": "メール系シグナルなし",
+        "verdict": "match"
+      },
+      {
+        "axis": "161.33.12.212 IP",
+        "customer": "言及なし",
+        "preflight": "skipped",
+        "incident": "5/2: 82 / 5/3: 51 / 5/4: 2347 req",
+        "verdict": "customer_blindspot"
+      }
+    ],
+    "investigations": [
+      {
+        "id": "#1",
+        "trigger": "🚨不一致 (改ざん)",
+        "query": "find /var/www -mmin -120 -name '*.php'",
+        "finding": "変更ゼロ",
+        "impact": "改ざん否定"
+      },
+      {
+        "id": "#2",
+        "trigger": "❓情報不足 (SEO不審リンク)",
+        "query": "curl localhost | grep href; mysql wp_options",
+        "finding": "スパムゼロ / 旧siteurl=168.138.42.63",
+        "impact": "WP設定ミスが原因"
+      },
+      {
+        "id": "#3",
+        "trigger": "🚨顧客盲点",
+        "query": "grep 161.33.12.212 | uniq 日付別",
+        "finding": "5/2:82, 5/3:51, 5/4:2347",
+        "impact": "2日前から活動"
+      },
+      {
+        "id": "#4",
+        "trigger": "ツール在庫確認",
+        "query": "command -v iptables nft firewall-cmd; httpd -M | grep authz",
+        "finding": "iptables等なし / authz_host_module あり",
+        "impact": "Apache Require not ip で代替"
+      },
+      {
+        "id": "#5",
+        "trigger": "[C-1] 実行後検証",
+        "query": "ls /etc/httpd/conf.d/blocklist.conf; httpd -t",
+        "finding": "blocklist.conf 存在 113byte / Syntax OK",
+        "impact": "[C-1] 設定完了確認"
+      },
+      {
+        "id": "#6",
+        "trigger": "httpd reload 確認",
+        "query": "journalctl -u httpd | grep reload",
+        "finding": "15:42:27 Reloaded",
+        "impact": "[C-1] blocklist アクティブ確認"
+      },
+      {
+        "id": "#7",
+        "trigger": "攻撃ログ再確認",
+        "query": "grep 161.33.12.212 access_log | tail",
+        "finding": "最終 12:12:27 / reload以降エントリゼロ",
+        "impact": "blocklist 直接検証は攻撃再試行時まで不可"
+      },
+      {
+        "id": "#8",
+        "trigger": "[C-2] 実行後検証",
+        "query": "mysql wp_options SELECT siteurl/home",
+        "finding": "siteurl=http://com1.local 確認",
+        "impact": "[C-2] 完了確認 ✅"
+      }
+    ],
+    "impact_assessment": {
+      "window": {
+        "start_jst": "2026-05-02T13:07:00+09:00",
+        "end_jst": "2026-05-04T12:12:27+09:00",
+        "containment_time_jst": "2026-05-04T15:42:27+09:00",
+        "ongoing": false,
+        "evidence": "access_log: 12:12:27 以降同IP エントリゼロ / blocklist reload 15:42"
+      },
+      "affected_assets": [
+        {
+          "asset": "victor (com1.local Web / httpd:80)",
+          "impact": "応答遅延",
+          "severity": "medium",
+          "status": "正常稼働中"
+        },
+        {
+          "asset": "bravo",
+          "impact": "影響なし",
+          "severity": "none"
+        }
+      ],
+      "lateral_movement": {
+        "detected": false,
+        "evidence": "victor:80 のみ"
+      },
+      "exfiltration": {
+        "detected": false,
+        "credentials_compromised": false,
+        "evidence": "GET/ のみ、POST・outbound なし"
+      },
+      "actions_completed": [
+        {
+          "id": "C-1",
+          "action": "Apache blocklist.conf (Require not ip 161.33.12.212) + httpd reload",
+          "completed_at_jst": "2026-05-04T15:42:27+09:00",
+          "verified": true
+        },
+        {
+          "id": "C-2",
+          "action": "WordPress siteurl/home → http://com1.local",
+          "completed_at_jst": "unknown (15:42以前)",
+          "verified": true
+        }
+      ],
+      "customer_facing_summary": "5月4日 12:10〜12:12 頃 com1.local Web への大量リクエスト連打が発生し応答遅延が生じました。15:42 に対策設定を適用しました。ページの書き換え・データ漏洩は確認されていません。Webページのリンク表示も正常に修正されました。"
+    },
+    "judgment_recommendation": {
+      "primary": "D",
+      "confidence": 0.80,
+      "rationale": "DDoS 確定 + 顧客盲点裏付け。[C-1]/[C-2] 実行完了確認済み",
+      "alternative": "C",
+      "alt_condition": "161.33.12.212 が自社テスト IP だった場合 (B-2 未確認)"
+    },
+    "action_proposals": {
+      "confirmed_findings": [
+        {
+          "id": "A-1",
+          "fact": "改ざんなし (PHP変更ゼロ)",
+          "source": "§2.5#1"
+        },
+        {
+          "id": "A-2",
+          "fact": "SEOスパムリンク ゼロ",
+          "source": "§2.5#2"
+        },
+        {
+          "id": "A-3",
+          "fact": "iptables等未インストール on victor",
+          "source": "§2.5#4"
+        },
+        {
+          "id": "A-4",
+          "fact": "161.33.12.212 が 5/2 から活動 (計2480 req)",
+          "source": "§2.5#3"
+        },
+        {
+          "id": "A-5",
+          "fact": "[C-1] blocklist.conf 有効化 (15:42 reload 確認)",
+          "source": "§2.5#5/#6"
+        },
+        {
+          "id": "A-6",
+          "fact": "[C-2] WordPress siteurl = http://com1.local 修正完了",
+          "source": "§2.5#8"
+        }
+      ],
+      "verification_needed": [
+        {
+          "id": "B-1",
+          "axis": "WordPress siteurl=168.138.42.63 の設定経緯",
+          "who": "顧客 WP 管理者",
+          "status": "未確認"
+        },
+        {
+          "id": "B-2",
+          "axis": "161.33.12.212 IP 認知度",
+          "who": "顧客 NW 担当",
+          "status": "未確認"
+        }
+      ],
+      "user_actions": [
+        {
+          "id": "D-1",
+          "action": "WordPress 管理者パスワード変更",
+          "who": "顧客 WP 管理者",
+          "status": "⏳ 完了確認待ち (本日中)"
+        }
+      ],
+      "commands": [
+        {
+          "id": "C-1",
+          "safety": "review",
+          "status": "✅ 実行済",
+          "executed_at_jst": "2026-05-04T15:42:27+09:00",
+          "command": "sudo tee /etc/httpd/conf.d/blocklist.conf + systemctl reload httpd",
+          "verify_result": "Syntax OK / Reloaded / 以降同IP エントリゼロ",
+          "note": "攻撃が 12:12 に自然収束済のため direct 遮断実績は未確認。OCI NSG が恒久対策"
+        },
+        {
+          "id": "C-2",
+          "safety": "review",
+          "status": "✅ 実行済",
+          "command": "mysql UPDATE wp_options siteurl/home → http://com1.local",
+          "verify_result": "SELECT で com1.local 確認済"
+        }
+      ]
+    },
+    "scope_proposal": {
+      "recommended_cookbook_chapter": "docs/recovery_cookbook.md §1 DDoS",
+      "out_of_scope_logged": [
+        "23/tcp telnet (別件)",
+        "3306 直接公開 (別件)",
+        "firewalld inactive (別件)"
+      ]
+    }
+  },
+  "verdict": {
+    "status": "⚠️",
+    "summary": "[C-1]/[C-2] 実行完了確認済み。残タスク: B-1/B-2 顧客確認 + D-1 パスワード変更確認待ち。"
+  },
+  "next_skills": [
+    "/report",
+    "/ticket"
+  ]
+}

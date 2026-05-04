@@ -1,0 +1,113 @@
+{
+  "skill": "incident",
+  "incident_id": "2026-05-04_04:34_victor",
+  "timestamp": "2026-05-04T04:40:01Z",
+  "actor": "ai_human",
+  "inputs": {
+    "window": "04:34-04:36",
+    "host": "victor",
+    "logs_collected": [
+      "access_log",
+      "secure",
+      "maillog",
+      "named.log",
+      "auth"
+    ]
+  },
+  "outputs": {
+    "analyzer_signals": [
+      {
+        "pattern_tag": "mail/sasl-failed",
+        "evidence": {
+          "ip": "161.33.12.212",
+          "method": "PLAIN"
+        },
+        "count": 15,
+        "severity": "medium"
+      }
+    ],
+    "mock_patches": [
+      {
+        "action": "block",
+        "target": "mail/*",
+        "confidence": 0.80,
+        "rule_id": "mock-mail-9b617148",
+        "rationale_ja": "SMTP AUTH brute force 送信元 block"
+      }
+    ],
+    "claude_patches": [
+      {
+        "action": "block",
+        "confidence": 0.95,
+        "rule_id": "mail_bruteforce_161_33_12_212",
+        "rationale_ja": "161.33.12.212 から 1 分間に 10 以上の ID で IMAP 認証試行"
+      },
+      {
+        "action": "rate_limit",
+        "confidence": 0.92,
+        "rule_id": "rate_limit_imap_auth_161_33_12_212",
+        "rationale_ja": "IMAP brute レート制限"
+      },
+      {
+        "action": "log",
+        "confidence": 0.88,
+        "rule_id": "pam_auth_failure_cascade",
+        "rationale_ja": "PAM auth failure 20 件連続記録"
+      },
+      {
+        "action": "log",
+        "confidence": 0.85,
+        "rule_id": "dovecot_auth_failed_pattern",
+        "rationale_ja": "dovecot imap-login 辞書攻撃記録"
+      },
+      {
+        "action": "advisory",
+        "confidence": 0.60,
+        "rule_id": "dns_service_down_victor",
+        "rationale_ja": "victor named INACTIVE (preflight と整合)"
+      }
+    ],
+    "false_positives_noted": [
+      "202.17.21.1 rocky SSH = 本 /incident ログ取得 (operator)",
+      "sudo ip -json = OCI monitoring agent noise",
+      "/etc/unified-monitoring-agent = OCI infra noise"
+    ],
+    "routing": {
+      "category": "phishing + ransomware (obuchi 標的)",
+      "primary_check": [
+        "check-courier-imap-plain",
+        "check-dovecot-passdb-pam",
+        "check-obuchi-777-hijack"
+      ],
+      "mandatory_check": [
+        "check-known-attacker-ip",
+        "check-syslog-udp-injection"
+      ],
+      "playbook": [
+        "/playbook:phishing",
+        "/playbook:ransomware (if obuchi compromise confirmed)"
+      ]
+    },
+    "soc_summary": "04:34-04:36 UTC に 161.33.12.212 から victor Dovecot IMAP (143/tcp) に対して PLAIN 認証ブルートフォース進行。辞書リスト (10 以上の ID) を約 6 秒間隔で試行、obuchi 含む全試行は失敗。161.33.12.212 は attack-vm (既侵害前提)。SSH scan (165.x, 107.x, 156.x) は背景ノイズ。named 停止は preflight と整合。",
+    "customer_questions": [
+      "13:35〜13:36 JST 頃に obuchi さんはメール閲覧を行っていましたか?",
+      "obuchi さんのメールパスワードを最後に変更したのはいつですか?",
+      "外部から victor IMAP を利用するスタッフは他にいますか?",
+      "現在メールが届かない/送れない症状が出ていますか?",
+      "一時サービス停止が必要な場合どの程度まで許容できますか?"
+    ],
+    "preflight_anomalies_count": 2
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "161.33.12.212 (attack-vm) が victor IMAP に辞書攻撃 (PLAIN brute) — obuchi 標的含む。次手順: /check:check-courier-imap-plain + /check:check-obuchi-777-hijack 並行起動"
+  },
+  "next_skills": [
+    "/check:check-known-attacker-ip",
+    "/check:check-syslog-udp-injection",
+    "/check:check-courier-imap-plain",
+    "/check:check-dovecot-passdb-pam",
+    "/check:check-obuchi-777-hijack",
+    "/playbook:phishing"
+  ]
+}

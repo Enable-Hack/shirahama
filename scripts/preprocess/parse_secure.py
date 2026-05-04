@@ -13,7 +13,7 @@ import sys
 from datetime import datetime
 from typing import Optional
 
-from _common import emit, stream_lines
+from _common import emit, stream_lines, to_jst_iso
 
 
 # 標準 syslog 形式: "Apr 27 13:00:00 host prog[pid]: msg"
@@ -42,11 +42,11 @@ PKEXEC_RE = re.compile(r'pkexec.*(GCONV_PATH|exploit)', re.IGNORECASE)
 
 
 def parse_syslog_ts(ts: str) -> Optional[str]:
-    """Apr 27 13:00:00 → 2026-04-27T13:00:00 (年は実行時の現在年)"""
+    """Apr 27 13:00:00 → 2026-04-27T13:00:00+09:00 (年は実行時の現在年 / JST 付与)"""
     try:
         year = datetime.now().year
         dt = datetime.strptime(f"{year} {ts}", "%Y %b %d %H:%M:%S")
-        return dt.isoformat()
+        return to_jst_iso(dt)
     except ValueError:
         return None
 

@@ -1,0 +1,49 @@
+{
+  "skill": "check",
+  "incident_id": "2026-05-04_05:00_bravo_victor",
+  "timestamp": "2026-05-04T07:25:00Z",
+  "actor": "ai_auto",
+  "checks_run": {
+    "check-known-attacker-ip": {
+      "patterns_matched": [
+        {"id": "A", "pattern": "KNOWN_IP_SSH_LOGIN", "verdict": "✅ NO (in window)"},
+        {"id": "B", "pattern": "UNAUTHORIZED_USER_LOGIN", "verdict": "✅ NO"},
+        {"id": "C", "pattern": "AUTHORIZED_KEYS_RECENT_MOD", "verdict": "🚨 YES — /home/obuchi/.ssh/authorized_keys mtime=May 3 08:53, perms=644"},
+        {"id": "D", "pattern": "WEB_ATTACK_ACTIVITY", "verdict": "✅ NO"}
+      ],
+      "evidence": [
+        "/home/obuchi/.ssh/authorized_keys: world-readable (644) + recently modified (May 3 08:53)"
+      ],
+      "verdict": "🚨 CRITICAL — authorized_keys hijack signature detected"
+    },
+    "check-syslog-udp-injection": {
+      "patterns_matched": [
+        {"id": "A", "pattern": "SYSLOG_514_UDP_LISTEN", "verdict": "✅ NO"},
+        {"id": "B", "pattern": "MALFORMED_LOG_ENTRIES", "verdict": "✅ NO"},
+        {"id": "C", "pattern": "TIMESTAMP_CORRUPTION", "verdict": "✅ NO (chronological)"}
+      ],
+      "evidence": ["No 514/UDP listener", "Log timestamps consistent"],
+      "verdict": "✅ CLEAN — no syslog injection detected"
+    },
+    "check-imap-auth-exposure": {
+      "patterns_matched": [
+        {"id": "A", "pattern": "PLAINTEXT_AUTH_ENABLED", "verdict": "🚨 YES — disable_plaintext_auth = no"},
+        {"id": "B", "pattern": "DOVECOT_PAM_EXPOSURE", "verdict": "🚨 YES — PAM backend"},
+        {"id": "C", "pattern": "SASL_BRUTE_DETECTED", "verdict": "🚨 YES — 15 failures from 161.33.12.212"}
+      ],
+      "evidence": [
+        "dovecot listening on 0.0.0.0:110, 0.0.0.0:143",
+        "10 distinct usernames attempted: rocky, admin, root, obuchi, wpadmin, webmaster, test, guest, operator, manager"
+      ],
+      "verdict": "🚨 CRITICAL — IMAP plaintext auth exposure + successful brute-force attempt"
+    }
+  },
+  "verdict": {
+    "status": "🚨🚨🚨",
+    "summary": "2つの CRITICAL 痕跡を確認: (1) obuchi の authorized_keys が May 3 に改竄された (世界読可 644 perms)、(2) IMAP plaintext auth 有効化で brute-force が成功可能な状態。既侵害アカウント (obuchi) の乗っ取り継続 + IMAP 認証成功の可能性高い。"
+  },
+  "next_skills": [
+    "/playbook:phishing (credential compromise response)",
+    "/check:check-obuchi-777-hijack (authorized_keys 詳細確認)"
+  ]
+}

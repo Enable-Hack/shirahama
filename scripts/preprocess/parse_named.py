@@ -13,7 +13,7 @@ import sys
 from datetime import datetime
 from typing import Optional
 
-from _common import emit, stream_lines
+from _common import emit, stream_lines, to_jst_iso
 
 
 # BIND の queries category 例:
@@ -41,10 +41,10 @@ AXFR_RE = re.compile(
 
 
 def parse_bind_ts(ts: str) -> Optional[str]:
-    """27-Apr-2026 13:00:00.123 → 2026-04-27T13:00:00.123"""
+    """27-Apr-2026 13:00:00.123 → 2026-04-27T13:00:00.123+09:00 (JST 正規化)"""
     try:
         dt = datetime.strptime(ts, "%d-%b-%Y %H:%M:%S.%f")
-        return dt.isoformat()
+        return to_jst_iso(dt)
     except ValueError:
         return None
 

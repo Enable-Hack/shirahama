@@ -1,0 +1,46 @@
+{
+  "skill": "review",
+  "incident_id": "2026-05-04_12:00_victor",
+  "timestamp": "2026-05-04T13:00:00+09:00",
+  "actor": "ai_auto",
+  "inputs": {
+    "hearing_path": "~/Desktop/shirahama_test.md",
+    "preflight_json": "preflight__20260504T125100Z.json",
+    "incident_json": "incident__20260504T125500Z.json"
+  },
+  "outputs": {
+    "attack_pattern_received": "ddos",
+    "attack_subpattern_received": "http-flood",
+    "comparison": [
+      {"axis": "影響サービス", "customer": "WP 重い", "preflight": "httpd active", "incident": "2480 req/30min", "verdict": "partial"},
+      {"axis": "改ざん疑い", "customer": "トップが改ざん", "preflight": "/var/www 静的", "incident": "24h 改変 0、status 200", "verdict": "blindspot"},
+      {"axis": "メール影響", "customer": "メールは生きてる", "preflight": "dovecot active", "incident": "攻撃 victor:80 のみ", "verdict": "match"},
+      {"axis": "攻撃元 IP", "customer": "(認識なし)", "preflight": "既侵害 IP 痕跡 0", "incident": "161.33.12.212 単一", "verdict": "blindspot"},
+      {"axis": "時間", "customer": "12:00頃", "preflight": "—", "incident": "12:10:41 開始", "verdict": "match"},
+      {"axis": "既侵害前提", "customer": "(認識なし)", "preflight": "10.1.129/24 由来 0", "incident": "(本案件外)", "verdict": "match"}
+    ],
+    "judgment_recommendation": {
+      "primary": "D",
+      "confidence": 0.85,
+      "rationale": "🚨 顧客盲点 2 件 (改ざん誤認 + 攻撃元 IP 未認識)。attack_pattern=ddos/http-flood は明確",
+      "alternative": "B",
+      "alt_condition": "161.33.12.212 が 30 分以内に自然収束し新規 IP に拡散しない場合"
+    },
+    "scope_proposal": {
+      "in_scope": [
+        {"action": "161.33.12.212 を iptables で DROP", "cookbook_ref": "§1 DDoS"},
+        {"action": "httpd MaxRequestWorkers 確認・必要なら拡張", "cookbook_ref": "§1 DDoS"}
+      ],
+      "out_of_scope_logged": [
+        {"finding": "victor 23/tcp telnet listen", "reason": "案件無関係、別 incident 起票"},
+        {"finding": "victor/bravo 3306 直接公開", "reason": "案件無関係、恒久対応は別件"},
+        {"finding": "error_log [::]:80 Permission denied 連発", "reason": "IPv6 listen 権限問題、攻撃と独立"}
+      ]
+    }
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "顧客盲点 2 件、判定 D 推奨、cookbook §1 で対応"
+  },
+  "next_skills": ["/report", "/ticket"]
+}

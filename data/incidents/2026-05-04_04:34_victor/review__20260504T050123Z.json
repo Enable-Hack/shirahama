@@ -1,0 +1,108 @@
+{
+  "skill": "review",
+  "incident_id": "2026-05-04_04:34_victor",
+  "timestamp": "2026-05-04T05:01:23Z",
+  "actor": "ai_auto",
+  "inputs": {
+    "hearing_path": "~/Desktop/shirahama_test.md",
+    "incident_window": "04:34-04:36",
+    "host": "victor",
+    "checks_consumed": [
+      "check-known-attacker-ip",
+      "check-syslog-udp-injection"
+    ]
+  },
+  "outputs": {
+    "comparison": [
+      {
+        "axis": "影響サービス",
+        "customer": "WP管理画面 + IMAP試行を検知",
+        "log": "Dovecot IMAP brute ×15 + /wp-login.php POST ×20 (161.33.12.212)",
+        "verdict": "match"
+      },
+      {
+        "axis": "時間窓",
+        "customer": "14:37:26-45 UTC (5/2) を検知",
+        "log": "5/4 04:34-04:36 UTC にも同IP継続中",
+        "verdict": "partial"
+      },
+      {
+        "axis": "攻撃元IP",
+        "customer": "161.33.12.212 = attack-vm と認識",
+        "log": "authorized_keys コメント attacker@10.1.129.10 — §0.5 既知侵害IPと同一主体",
+        "verdict": "blind_spot"
+      },
+      {
+        "axis": "obuchi .ssh 状態",
+        "customer": "hearing時点「.ssh未作成・不在」と記録",
+        "log": "check-known-attacker-ip: attacker@10.1.129.10 ed25519鍵が5/3 08:53 UTC設置済",
+        "verdict": "mismatch"
+      },
+      {
+        "axis": "突破ステータス",
+        "customer": "「全試行失敗・侵害なし」と判定",
+        "log": "authorized_keys改竄済 = SSH無認証侵入経路が2日間開放",
+        "verdict": "mismatch"
+      },
+      {
+        "axis": "ログ信頼性",
+        "customer": "ログを判断材料として使用",
+        "log": "syslog-udp-injection ✅ 注入なし、hostname/timestamp正常",
+        "verdict": "match"
+      },
+      {
+        "axis": "既侵害前提 §0.5",
+        "customer": "§0.5を意識して調査",
+        "log": "攻撃者の鍵コメントが attacker@10.1.129.10 = 既知侵害IPを名乗る",
+        "verdict": "blind_spot"
+      },
+      {
+        "axis": "過去発生有無",
+        "customer": "自発検知 — 初回認識",
+        "log": "5/3 08:53にauthorized_keys改竄済。hearing前日に既侵害完了",
+        "verdict": "blind_spot"
+      }
+    ],
+    "comparison_summary": {
+      "match": 2,
+      "partial": 1,
+      "mismatch": 2,
+      "blind_spot": 3,
+      "unknown": 0
+    },
+    "judgment_recommendation": {
+      "primary": "D",
+      "confidence": 0.92,
+      "rationale": "不一致2件 + 顧客盲点3件。ログが認識より深刻な侵害を示す。攻撃者は随時SSH侵入可能な状態が2日間継続。即対応必要。",
+      "alternative": "C",
+      "alt_condition": "obuchi本人が authorized_keys を正規設置した可能性を直接確認できる場合のみ (鍵コメント attacker@10.1.129.10 からその可能性は極めて低い)"
+    },
+    "scope_proposal": {
+      "in_scope": [
+        "/home/obuchi/.ssh/authorized_keys 削除 (最優先 — キルチェーン完成を断つ)",
+        "chmod 700 /home/obuchi (777が書き込みを許した根本原因)",
+        "Dovecot disable_plaintext_auth=yes + ssl=required (IMAP PLAIN brute経路を断つ)",
+        "IP block 161.33.12.212 (WP+IMAP brute継続攻撃の物理遮断)",
+        "obuchi/rocky/rootパスワードリセット (brute成功時への備え)"
+      ],
+      "out_of_scope_logged": [
+        "bravo toor:x:0:0:Backdoor Root (PW ロック済、今回受電と直接連動なし)",
+        "BIND allow-update {10.0.0.0/8;} (DNS改ざんは今回攻撃シーケンスに含まれない)",
+        "PHP allow_url_fopen + open_basedir空 (WP突破未確認段階で過剰)",
+        "pkexec PwnKit CVE-2021-4034 (SSH侵入後のLPE経路 — 先に authorized_keys 削除が必要)",
+        "Telnet 23/tcp (lab意図的植え付け、今回受電と無関係)",
+        "SNMP community=public / MySQL X 33060 (偵察系 — 今回受電と無関係)",
+        "Sendmail open relay (phishingシナリオ確定後に対応)",
+        "SELinux disabled / firewalld inactive (全シナリオ前提 — 単独有効化は他シナリオ影響あり)"
+      ]
+    }
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "不一致2件 + 顧客盲点3件。hearing時点の「全未遂」判定は誤り — 5/3 08:53にauthorized_keys改竄済の永続化確定。判定D推奨 (conf=0.92)。最優先: authorized_keys削除 + chmod 700。"
+  },
+  "next_skills": [
+    "/playbook:ransomware",
+    "/playbook:phishing"
+  ]
+}

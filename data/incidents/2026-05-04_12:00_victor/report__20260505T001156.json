@@ -1,0 +1,121 @@
+{
+  "skill": "report",
+  "incident_id": "2026-05-04_12:00_victor",
+  "timestamp": "2026-05-05T00:11:56+09:00",
+  "actor": "ai_human",
+  "inputs": {
+    "incident_id": "2026-05-04_12:00_victor",
+    "review_json": "review__20260505T000653.json",
+    "hearing_json": "hearing__20260504T120000+0900.json",
+    "incident_json": "incident__20260504T125500Z.json"
+  },
+  "outputs": {
+    "completion_mode": "first_response_only",
+    "checklist": {
+      "直接原因特定": true,
+      "拡大再発防止": false,
+      "影響範囲確定": true,
+      "サービス正常稼働": true,
+      "残タスク整理": true,
+      "追加質問準備": true,
+      "記録": true
+    },
+    "completion_status": "一次対応完了",
+    "completion_reason": "IP 遮断 [C-1] がリーダー承認待ちのため、実作業実施は継続中",
+    "estimated_completion_time_jst": "2026-05-04T13:30:00+09:00",
+    "templates": {
+      "customer_staff": "顧客担当者向け電話スクリプト — 事象・原因・対応・影響を簡潔に説明",
+      "executive": "経営層向け 300 字サマリ — 事実・現在状態・対応・今後",
+      "users": "該当なし (DDoS は企業向けサービス層)",
+      "external": "該当なし (内部発見)",
+      "email": "メール正式記録版 — 完全タイムライン・根拠・確認依頼を併記"
+    },
+    "verified_findings": [
+      {
+        "id": "A-1",
+        "fact": "PHP ファイル変更ゼロ (120min 以内)",
+        "method": "ssh victor find /var/www -mmin -120"
+      },
+      {
+        "id": "A-2",
+        "fact": "WordPress SEO スパムリンク ゼロ",
+        "method": "curl http://localhost/ | grep href"
+      },
+      {
+        "id": "A-3",
+        "fact": "WordPress siteurl=home=http://168.138.42.63 (OCI 生 IP 設定ミス)",
+        "method": "mysql wp_options 照会"
+      },
+      {
+        "id": "A-4",
+        "fact": "攻撃 IP 161.33.12.212 は 5/2 から活動継続 (82→51→2347 req)",
+        "method": "access_log 日付別 uniq"
+      },
+      {
+        "id": "A-5",
+        "fact": "データ流出確認できず (GET / のみ、POST なし、outbound なし)",
+        "method": "access_log POST/outbound パターン検査"
+      }
+    ],
+    "verification_needed": [
+      {
+        "id": "B-1",
+        "axis": "WordPress siteurl=168.138.42.63 の設定意図",
+        "who": "顧客 WP 管理者",
+        "expected": "知らない → 設定ミス確定 | 意図的 → 対応不要"
+      },
+      {
+        "id": "B-2",
+        "axis": "161.33.12.212 IP の認知度",
+        "who": "顧客 NW 担当",
+        "expected": "知らない → 外部攻撃確定 | 自社テスト → 攻撃判定見直し"
+      }
+    ],
+    "pending_actions": [
+      {
+        "id": "C-1",
+        "action": "iptables で 161.33.12.212 DROP 遮断",
+        "responsible": "技術担当 (ssh 実行)",
+        "status": "リーダー承認待ち",
+        "est_time_jst": "2026-05-04T13:00-13:30+09:00"
+      },
+      {
+        "id": "C-2",
+        "action": "WordPress siteurl/home を com1.local に修正",
+        "responsible": "技術担当 (mysql 実行)",
+        "status": "リーダー承認待ち",
+        "est_time_jst": "2026-05-04T13:00-13:30+09:00"
+      },
+      {
+        "id": "D-1",
+        "action": "WordPress 管理者パスワード変更",
+        "responsible": "顧客 (WP 管理者)",
+        "status": "実施依頼中",
+        "deadline": "本日中"
+      },
+      {
+        "id": "B-1",
+        "action": "siteurl 設定の意図確認",
+        "responsible": "顧客へのヒアリング",
+        "status": "確認待ち",
+        "deadline": "本日中"
+      },
+      {
+        "id": "B-2",
+        "action": "161.33.12.212 IP 認知度確認",
+        "responsible": "顧客へのヒアリング",
+        "status": "確認待ち",
+        "deadline": "本日中"
+      }
+    ],
+    "next_report_time_jst": "2026-05-04T13:30:00+09:00",
+    "next_report_content": "IP 遮断・siteurl 修正の実施確認、顧客パスワード変更・ヒアリング結果確認"
+  },
+  "verdict": {
+    "status": "⚠️",
+    "summary": "一次対応完了。侵害元特定・封じ込め方針決定済。実作業実施は継続中。"
+  },
+  "next_skills": [
+    "/ticket"
+  ]
+}

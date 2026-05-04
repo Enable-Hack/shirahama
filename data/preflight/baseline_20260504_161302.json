@@ -1,0 +1,79 @@
+{
+  "skill": "preflight",
+  "timestamp": "2026-05-04T07:12:31Z",
+  "inputs": {
+    "target": "both",
+    "mode": "full"
+  },
+  "outputs": {
+    "victor": {
+      "ping_ms": 5.2,
+      "services": {
+        "httpd": "active",
+        "dovecot": "active",
+        "named": "inactive",
+        "sendmail": "active",
+        "sshd": "active",
+        "mariadb": "active",
+        "php-fpm": "active",
+        "atd": "active"
+      },
+      "listen_ports": [22, 23, 25, 80, 110, 111, 143, 199, 3306],
+      "etc_changed_recently": [
+        "/etc/unified-monitoring-agent/source_info/tenancyid_info",
+        "/etc/unified-monitoring-agent/source_info/subjectid_info",
+        "/etc/unified-monitoring-agent/source_info/compartmentid_info",
+        "/etc/unified-monitoring-agent/unified_monitoring.json"
+      ],
+      "load_avg": 0.00,
+      "disk_usage_percent": 14,
+      "last_logins": [
+        "rocky from 106.158.252.163 (Sat May 2 14:37:54)"
+      ],
+      "running_services_count": 30,
+      "anomalies": [
+        {
+          "severity": "⚠️",
+          "kind": "service_inactive",
+          "detail": "named service INACTIVE — expected for victor (DNS only on bravo)"
+        }
+      ]
+    },
+    "bravo": {
+      "ping_ms": 5.1,
+      "services": {
+        "httpd": "active",
+        "dovecot": "active",
+        "named": "active",
+        "sendmail": "active",
+        "sshd": "active",
+        "mariadb": "active",
+        "php-fpm": "active",
+        "atd": "active"
+      },
+      "listen_ports": [22, 25, 53, 80, 110, 111, 143, 199, 953, 3306],
+      "etc_changed_recently": [
+        "/etc/unified-monitoring-agent/source_info/tenancyid_info",
+        "/etc/unified-monitoring-agent/source_info/subjectid_info",
+        "/etc/unified-monitoring-agent/source_info/compartmentid_info",
+        "/etc/unified-monitoring-agent/unified_monitoring.json"
+      ],
+      "load_avg": 0.15,
+      "disk_usage_percent": 14,
+      "last_logins": [
+        "reboot system boot (Fri May 1 11:50:56)"
+      ],
+      "running_services_count": 31,
+      "anomalies": []
+    }
+  },
+  "verdict": {
+    "status": "✅",
+    "summary": "Both VMs healthy. Victor named inactive as expected. No critical anomalies. Ready for incident work."
+  },
+  "next_skills": [
+    "/incident <time-window> <host>",
+    "/check:check-static-recon",
+    "/check:check-known-attacker-ip (if anomalies detected)"
+  ]
+}

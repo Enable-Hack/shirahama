@@ -1,0 +1,35 @@
+{
+  "skill": "preflight",
+  "incident_id": "2026-05-04_12:00_victor",
+  "timestamp": "2026-05-04T12:51:00+09:00",
+  "actor": "ai_auto",
+  "inputs": {"hosts": ["victor", "bravo"]},
+  "outputs": {
+    "victor": {
+      "services": {"httpd": "active", "nginx": "inactive", "php-fpm": "active", "mariadb": "active", "named": "inactive", "postfix": "inactive", "dovecot": "active", "sshd": "active", "firewalld": "inactive"},
+      "listen": ["22", "23", "25", "80", "110", "111", "143", "199", "3306"],
+      "load": "0.09 / 0.10 / 0.64",
+      "etc_recent_changes": [],
+      "anomalies": [
+        {"severity": "🚨", "kind": "listen-port", "detail": "23/tcp telnet plain auth listening"},
+        {"severity": "⚠️", "kind": "listen-port", "detail": "3306/tcp mariadb 直接公開"},
+        {"severity": "⚠️", "kind": "service", "detail": "firewalld inactive (iptables 単独運用前提か要確認)"}
+      ]
+    },
+    "bravo": {
+      "services": {"httpd": "active", "nginx": "inactive", "php-fpm": "active", "mariadb": "active", "named": "active", "postfix": "inactive", "dovecot": "active", "sshd": "active", "firewalld": "inactive"},
+      "listen": ["22", "25", "53", "80", "110", "111", "143", "199", "953", "3306"],
+      "load": "0.22 / 0.23 / 0.27",
+      "etc_recent_changes": [],
+      "anomalies": [
+        {"severity": "⚠️", "kind": "listen-port", "detail": "3306/tcp mariadb 直接公開"},
+        {"severity": "⚠️", "kind": "service", "detail": "firewalld inactive"}
+      ]
+    }
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "🚨 1 (victor:23 telnet) / ⚠️ 4 / 既侵害ログイン 0"
+  },
+  "next_skills": ["/incident 12:00-12:30 victor", "/review"]
+}

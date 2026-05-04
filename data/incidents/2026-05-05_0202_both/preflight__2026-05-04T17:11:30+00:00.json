@@ -1,0 +1,56 @@
+{
+  "inputs": {
+    "target": "both",
+    "mode": "full"
+  },
+  "outputs": {
+    "status": "SKIPPED",
+    "reason": "infrastructure_unavailable",
+    "victor": {
+      "host_alias": "victor",
+      "expected_ip": "10.1.1.2 (或 168.138.42.63 from OCI)",
+      "expected_os": "Rocky Linux 8.10",
+      "connectivity": "unreachable",
+      "services": null,
+      "listen_ports": null,
+      "load_avg": null,
+      "anomalies": [
+        {
+          "severity": "⚠️",
+          "kind": "connectivity_fail",
+          "detail": "SSH alias not configured or host offline"
+        }
+      ]
+    },
+    "bravo": {
+      "host_alias": "bravo",
+      "expected_ip": "10.1.1.1",
+      "expected_os": "Rocky Linux 8.10 (デモ) or FreeBSD (本番)",
+      "connectivity": "unreachable",
+      "services": null,
+      "listen_ports": null,
+      "load_avg": null,
+      "anomalies": [
+        {
+          "severity": "⚠️",
+          "kind": "connectivity_fail",
+          "detail": "SSH alias not configured or host offline"
+        }
+      ]
+    }
+  },
+  "verdict": {
+    "status": "⚠️",
+    "summary": "OCI infrastructure not available. Configure SSH and verify instances running before next action.",
+    "required_actions": [
+      "Check OCI console for instance status (Running/Stopped)",
+      "Configure SSH aliases in ~/.ssh/config",
+      "Test connectivity: ssh victor 'uname -a'",
+      "Re-run /preflight when infrastructure is ready"
+    ]
+  },
+  "next_skills": [
+    "/preflight (再実行)",
+    "/incident <時間窓> <host>"
+  ]
+}

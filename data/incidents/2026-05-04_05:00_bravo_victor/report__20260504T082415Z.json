@@ -1,0 +1,52 @@
+{
+  "skill": "report",
+  "incident_id": "2026-05-04_05:00_bravo_victor",
+  "timestamp": "2026-05-04T08:24:15.944531+00:00",
+  "actor": "ai_human",
+  "inputs": {
+    "triage_report_path": "data/incidents/2026-05-04_05:00_bravo_victor/",
+    "verification_run_ref": "data/incidents/2026-05-04_05:00_bravo_victor/verification_run__20260504T082415Z.json",
+    "template_path": "docs/04_完了報告テンプレート.md"
+  },
+  "outputs": {
+    "completion_mode": "full_done",
+    "checklist": {
+      "直接原因特定": true,
+      "拡大再発しない状態": true,
+      "影響範囲確定": true,
+      "サービス正常稼働": true,
+      "残タスク整理": true,
+      "顧客追加質問への準備": true,
+      "記録保管": true,
+      "効果確認実施": true
+    },
+    "verification_summary": "v1〜v6 全 PASS。obuchi 鍵削除済 / perm 700 化 / sendmail REJECT 反映 / 新規 sasl 試行 0 / サービス active / obuchi 直接 SSH 不可。",
+    "templates": {
+      "customer_phone": "顧客担当者向け電話対応 (完全完了)\n【対応完了報告】\n- 攻撃元: 161.33.12.212 (Akamai)\n- 内容: IMAP/SMTP brute-force + obuchi アカウントへの SSH バックドア仕込み\n- 対応: 不正鍵削除、/home/obuchi perm 700 化、sendmail で攻撃元 IP REJECT\n- 効果確認: 封じ込め後 3 時間以上、161.33.12.212 からの新規攻撃試行 0 件\n- 情報漏洩: 認証は全て失敗、漏洩は確認されていません\n- 残作業: ログの長期保管 + obuchi 氏のパスワード再発行依頼\n本件は対応完了とし、当面再発がないか引き続き 24 時間監視します。",
+      "executive_short": "経営層向け 300 字: 認証総当たり攻撃と SSH バックドア痕跡を完全封じ込め。情報漏洩なし、サービス正常稼働継続。再発監視 24 時間継続。",
+      "users": "obuchi 氏個別連絡: SSH 公開鍵の不正追加を発見し削除しました。念のためパスワード変更と SSH 鍵の再発行をお願いします。",
+      "external": "外部第三者通報者向け: ご通報の件、攻撃を確認し封じ込めました。情報漏洩は確認されておりません。ご協力ありがとうございました。",
+      "email_record": "メール正式記録: 添付の最終インシデントレポート参照。効果確認 6/6 PASS、対応完了。"
+    },
+    "remaining_items": [
+      "obuchi 氏のパスワード再発行 (運用側で実施)",
+      "24 時間後の再発監視 (maillog で 161.33.12.212 から再試行が無いことを確認)",
+      "/ticket で PukiWiki マークアップ生成 → 投稿"
+    ],
+    "evidence_files": [
+      "/tmp/evidence_obuchi_authorized_keys.txt (攻撃者鍵の保全コピー)",
+      "data/incidents/2026-05-04_05:00_bravo_victor/incident__*.json (analyzer 検出結果)",
+      "data/incidents/2026-05-04_05:00_bravo_victor/check-obuchi-777-hijack__*.json (バックドア証拠)",
+      "data/incidents/2026-05-04_05:00_bravo_victor/playbook-phishing__*.json (実行コマンド + 効果確認手順)",
+      "data/incidents/2026-05-04_05:00_bravo_victor/verification_run__*.json (効果確認 6/6 PASS の証拠)"
+    ]
+  },
+  "verdict": {
+    "status": "✅",
+    "summary": "完全完了。効果確認 6/6 PASS。顧客最終報告書を送付可能。"
+  },
+  "next_skills": [
+    "/ticket (PukiWiki マークアップ)",
+    "24 時間監視継続"
+  ]
+}

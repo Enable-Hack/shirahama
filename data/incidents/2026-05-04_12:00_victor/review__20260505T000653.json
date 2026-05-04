@@ -1,0 +1,206 @@
+{
+  "skill": "review",
+  "incident_id": "2026-05-04_12:00_victor",
+  "timestamp": "2026-05-05T00:06:54+09:00",
+  "actor": "ai_auto",
+  "inputs": {
+    "incident_id": "2026-05-04_12:00_victor",
+    "hearing_consumed": true,
+    "preflight_consumed": true,
+    "incident_consumed": true
+  },
+  "outputs": {
+    "attack_pattern_received": "ddos",
+    "attack_subpattern_received": "http-flood",
+    "comparison": [
+      {
+        "axis": "影響サービス",
+        "customer": "web (WordPress)",
+        "preflight": "httpd active / php-fpm active",
+        "incident": "http-flood (victor:80) 2480 req",
+        "verdict": "match"
+      },
+      {
+        "axis": "応答遅延",
+        "customer": "重い",
+        "preflight": "load 0.09/0.10/0.64 (正常)",
+        "incident": "2480 req flood → 負荷増大推定",
+        "verdict": "partial_match"
+      },
+      {
+        "axis": "改ざん",
+        "customer": "改ざんされてるかもしれない",
+        "preflight": "/etc 変更なし",
+        "incident": "/var/www PHP 変更ゼロ",
+        "verdict": "mismatch"
+      },
+      {
+        "axis": "SEO不審リンク",
+        "customer": "SEO目的の不審リンク",
+        "preflight": "skipped",
+        "incident": "DDoS のみ / 改ざん痕跡なし",
+        "verdict": "partial_match"
+      },
+      {
+        "axis": "メール",
+        "customer": "メールは生きてる",
+        "preflight": "dovecot active (victor + bravo)",
+        "incident": "メール系シグナルなし",
+        "verdict": "match"
+      },
+      {
+        "axis": "161.33.12.212 IP",
+        "customer": "言及なし (顧客認知ゼロ)",
+        "preflight": "skipped",
+        "incident": "5/2: 82 req, 5/3: 51 req, 5/4: 2347 req",
+        "verdict": "customer_blindspot"
+      }
+    ],
+    "investigations": [
+      {
+        "id": "#1",
+        "trigger": "🚨不一致 (axis: 改ざん)",
+        "query": "ssh victor 'sudo find /var/www -mmin -120 -type f -name \"*.php\"'",
+        "finding": "出力ゼロ — 過去 120 分以内に変更された PHP ファイルなし",
+        "impact": "改ざん痕跡を否定。顧客の「改ざんかも」は主観的誤認と整理"
+      },
+      {
+        "id": "#2",
+        "trigger": "❓情報不足 (axis: SEO不審リンク — HTML 実体未確認)",
+        "query": "curl http://localhost/ | grep href; mysql -e 'SELECT siteurl,home FROM wp_options'",
+        "finding": "SEO スパムキーワードゼロ。WordPress siteurl=home=http://168.138.42.63 (OCI 生 IP 設定ミス)",
+        "impact": "wp-tamper 完全否定。顧客への説明材料: 改ざんではなく設定ミス"
+      },
+      {
+        "id": "#3",
+        "trigger": "🚨顧客盲点 (axis: 161.33.12.212 の過去活動)",
+        "query": "ssh victor 'sudo grep 161.33.12.212 /var/log/httpd/access_log | awk 日付部抽出 | uniq -c'",
+        "finding": "5/2: 82 req / 5/3: 51 req / 5/4: 2347 req (計 2480 件)。5/4 最終 12:12:27",
+        "impact": "攻撃は 2 日前から低速プローブ → 5/4 に escalate。顧客盲点を裏付け"
+      }
+    ],
+    "impact_assessment": {
+      "window": {
+        "start_jst": "2026-05-02T13:07:00+09:00",
+        "end_jst": "2026-05-04T12:12:27+09:00",
+        "main_phase_start_jst": "2026-05-04T12:10:00+09:00",
+        "main_phase_end_jst": "2026-05-04T12:12:27+09:00",
+        "duration_minutes": 3,
+        "ongoing": false,
+        "evidence": "access_log tail で 12:12:27 以降 0 req 確認 (§2.5#3)"
+      },
+      "affected_assets": [
+        {
+          "asset": "victor (com1.local Web / httpd:80)",
+          "impact": "応答遅延",
+          "severity": "medium"
+        },
+        {
+          "asset": "bravo",
+          "impact": "影響なし",
+          "severity": "none"
+        }
+      ],
+      "lateral_movement": {
+        "detected": false,
+        "evidence": "incident.signals は victor:80 のみ、bravo への攻撃シグナルなし"
+      },
+      "exfiltration": {
+        "detected": false,
+        "credentials_compromised": false,
+        "evidence": "GET / のみ、POST なし、outbound 不審通信なし"
+      },
+      "customer_facing_summary": "5月4日 12:10 頃を中心に com1.local Web への大量リクエスト連打が発生し、応答遅延が生じました。Webページの書き換え・データ漏洩は確認されていません。Webページ上の外部IP形式リンク (168.138.42.63) は WordPress の設定ミスによるものであり、不正な書き換えではありません。"
+    },
+    "judgment_recommendation": {
+      "primary": "D",
+      "confidence": 0.80,
+      "rationale": "🚨顧客盲点 1件 (161.33.12.212 が 5/2 から活動、§2.5#3) + attack_pattern=ddos/http-flood 確定 + 🚨不一致「改ざん」は §2.5#1 で否定済",
+      "alternative": "C",
+      "alt_condition": "161.33.12.212 が顧客側の既知テスト IP だった場合 (B-2 確認後)"
+    },
+    "action_proposals": {
+      "confirmed_findings": [
+        {
+          "id": "A-1",
+          "fact": "/var/www PHP 変更ゼロ (120min)",
+          "source": "§2.5#1"
+        },
+        {
+          "id": "A-2",
+          "fact": "WordPress HTML SEO スパムリンクゼロ",
+          "source": "§2.5#2"
+        },
+        {
+          "id": "A-3",
+          "fact": "WordPress siteurl=home=http://168.138.42.63 (OCI 生 IP 設定ミス)",
+          "source": "§2.5#2"
+        },
+        {
+          "id": "A-4",
+          "fact": "161.33.12.212 が 5/2: 82 req / 5/3: 51 req / 5/4: 2347 req で活動",
+          "source": "§2.5#3"
+        }
+      ],
+      "verification_needed": [
+        {
+          "id": "B-1",
+          "axis": "WordPress siteurl=168.138.42.63 の経緯",
+          "who": "顧客 WP 管理者",
+          "expected": "「知らない」→ 設定ミス確定 [C-2] / 「意図的」→ 対応不要"
+        },
+        {
+          "id": "B-2",
+          "axis": "161.33.12.212 の認知度",
+          "who": "顧客 NW 担当",
+          "expected": "「知らない」→ 外部攻撃確定 [C-1] / 「自社テスト機」→ C に降格"
+        }
+      ],
+      "user_actions": [
+        {
+          "id": "D-1",
+          "action": "WordPress 管理者パスワード変更",
+          "who": "顧客 WP 管理者",
+          "reason": "161.33.12.212 が 5/2 から活動 → WP ログイン試行の可能性を否定できない",
+          "when": "完了電話報告と同時 (T+0:30)、当日中完了",
+          "duration": "5 分",
+          "risk_if_skip": "攻撃者が WP admin ログインを試みた場合に再侵入の足がかりになる可能性"
+        }
+      ],
+      "commands": [
+        {
+          "id": "C-1",
+          "safety": "review",
+          "reason": "161.33.12.212 から 5/4 に 2347 req 集中 (LOIC 痕跡) → 単一 IP 遮断で十分。settings.json ask 権限あり",
+          "command": "ssh victor 'sudo iptables -I INPUT -s 161.33.12.212 -j DROP'",
+          "expected_impact": "当該 IP のみ遮断、他クライアントへの影響なし",
+          "verify_after": "ssh victor 'sudo iptables -L INPUT -n | grep 161.33.12.212'"
+        },
+        {
+          "id": "C-2",
+          "safety": "review",
+          "reason": "WordPress siteurl=168.138.42.63 が顧客の「SEO不審リンク」誤認の根本原因 → com1.local に修正",
+          "command": "ssh victor 'mysql -u root wordpress -e \"UPDATE wp_options SET option_value=\\'http://com1.local\\' WHERE option_name IN (\\'siteurl\\',\\'home\\');\"'",
+          "expected_impact": "WordPress 全リンクが com1.local ベースに変更 (サービス影響なし)",
+          "verify_after": "ssh victor 'mysql -u root wordpress -e \"SELECT option_name, option_value FROM wp_options WHERE option_name IN (\\'siteurl\\',\\'home\\');\"'"
+        }
+      ]
+    },
+    "scope_proposal": {
+      "recommended_cookbook_chapter": "docs/recovery_cookbook.md §1 DDoS",
+      "out_of_scope_logged": [
+        "victor 23/tcp telnet plain auth (preflight 🚨、今回 DDoS と無関係)",
+        "victor / bravo 3306/tcp mariadb 直接公開 (preflight ⚠️、DDoS と無関係)",
+        "victor / bravo firewalld inactive (preflight ⚠️、DDoS と無関係)"
+      ]
+    }
+  },
+  "verdict": {
+    "status": "🚨",
+    "summary": "🚨顧客盲点 (攻撃 IP 5/2 から活動) + ddos/http-flood 確定。改ざん否定。判定 D 推奨、[C] コマンド 2 件"
+  },
+  "next_skills": [
+    "/report",
+    "/ticket"
+  ]
+}

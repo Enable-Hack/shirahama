@@ -1,0 +1,112 @@
+{
+  "skill": "report",
+  "incident_id": "2026-05-04_12:00_victor",
+  "timestamp": "2026-05-05T00:57:18+09:00",
+  "actor": "ai_human",
+  "inputs": {
+    "incident_id": "2026-05-04_12:00_victor",
+    "review_path": "data/incidents/2026-05-04_12:00_victor/review__20260505T004615.json",
+    "hearing_path": "data/incidents/2026-05-04_12:00_victor/hearing__20260504T120000+0900.json",
+    "incident_path": "data/incidents/2026-05-04_12:00_victor/incident__20260504T125500Z.json",
+    "template_path": "docs/04_完了報告テンプレート.md"
+  },
+  "outputs": {
+    "completion_mode": "complete",
+    "checklist": {
+      "直接原因特定": true,
+      "拡大再発しない状態": true,
+      "影響範囲確定": true,
+      "サービス正常稼働": true,
+      "残タスク整理": true,
+      "追加質問準備": true,
+      "記録": true
+    },
+    "templates": {
+      "customer": "顧客担当者向け 電話短文（テンプレ1）— 5月4日12:10〜12:12 の応答遅延、原因 IP 161.33.12.212、15:42 遮断設定完了、改ざん・漏洩なし、WP URL 修正済、パスワード変更依頼",
+      "executive": "経営層向け 300字以内（テンプレ2）— 約2分間の応答遅延、15:42 遮断、現在正常稼働、漏洩確認なし、判断不要",
+      "users": "該当なし（サービス停止なく直接影響なし）",
+      "external": "該当なし（顧客直接通報、外部第三者経由ではない）",
+      "email_subject_body": "件名:【ご報告】2026年5月4日発生 Webサーバ大量リクエスト 対応完了のご連絡 / 本文: 事案概要・原因・時系列・影響範囲・確認できたこと5件・確認できなかったこと3件・今後の対応・お願い事項3件"
+    },
+    "verified_findings": [
+      {
+        "id": "V-1",
+        "fact": "ページ書き換えは無し",
+        "evidence": "/var/www 配下 PHP ファイル過去120分以内変更ゼロ",
+        "source": "review §2.5 #1"
+      },
+      {
+        "id": "V-2",
+        "fact": "SEO スパム本体は無し",
+        "evidence": "WordPress トップ HTML に casino/viagra 等のキーワードゼロ",
+        "source": "review §2.5 #2"
+      },
+      {
+        "id": "V-3",
+        "fact": "WordPress siteurl=168.138.42.63 (OCI 生 IP の設定ミス) が顧客誤認の原因",
+        "evidence": "wp_options siteurl/home 確認、本対応で http://com1.local に修正",
+        "source": "review §2.5 #2/#8"
+      },
+      {
+        "id": "V-4",
+        "fact": "横展開無し (bravo メール/DNS への攻撃シグナル無し)",
+        "evidence": "incident.signals は victor:80 のみ",
+        "source": "review impact_assessment.lateral_movement"
+      },
+      {
+        "id": "V-5",
+        "fact": "blocklist.conf 適用済 (15:42:27 JST)",
+        "evidence": "httpd Syntax OK + reload 確認 (journalctl)",
+        "source": "review §2.5 #5/#6"
+      },
+      {
+        "id": "V-6",
+        "fact": "情報漏洩は無し (現時点確認範囲)",
+        "evidence": "GET / のみ、POST/Cookie/outbound なし、status全200",
+        "source": "review impact_assessment.exfiltration"
+      }
+    ],
+    "unverified_findings": [
+      {
+        "id": "U-1",
+        "axis": "blocklist の遮断実績",
+        "limitation": "攻撃が 12:12 に自然収束したため reload 後 (15:42) の同 IP 再アクセスが無く実効性は直接確認できなかった",
+        "next_step": "攻撃者再試行時に 403 が記録されるか確認、OCI NSG で恒久遮断を並行実施"
+      },
+      {
+        "id": "U-2",
+        "axis": "WP 管理画面ログイン試行の有無 (5/2 以前)",
+        "limitation": "wp-login.php 専用ログの保管期間が短く 5/2 以前の試行は確認不能",
+        "next_step": "保管期間を 90 日に拡張、念のため [D-1] で WP admin パスワード変更を依頼"
+      },
+      {
+        "id": "U-3",
+        "axis": "5/2-5/4 期間の他ホスト (bravo) への攻撃の有無",
+        "limitation": "bravo の access_log は本対応の調査範囲外",
+        "next_step": "中期 (今週中) に bravo 側ログを横展開有無として追加調査"
+      }
+    ],
+    "remaining_items": [
+      "[D-1] WordPress 管理者を含むメールアカウント 7 名のパスワード変更 (本日中)",
+      "[B-1] WordPress siteurl 旧 IP 設定経緯の顧客確認 (2026-05-05 中)",
+      "[B-2] 161.33.12.212 IP 認知度の顧客確認 (2026-05-05 中)",
+      "[長期] OCI NSG で永続遮断、wp-login.php ログ保管 90 日拡張、bravo 横展開有無の追加調査"
+    ],
+    "key_facts": {
+      "customer": "白浜 Web 担当 (com1.local 運用部)",
+      "tone": "anxious",
+      "attack_pattern": "ddos/http-flood",
+      "source_ip": "161.33.12.212",
+      "attack_window_jst": "2026-05-04T12:10:41+09:00 - 2026-05-04T12:12:27+09:00",
+      "containment_time_jst": "2026-05-04T15:42:27+09:00",
+      "request_count": 2480
+    }
+  },
+  "verdict": {
+    "status": "✅",
+    "summary": "完全完了。テンプレ1/2/5出力、verified 6件 / unverified 3件 明示分離。D-1/B-1/B-2 顧客確認待ち。"
+  },
+  "next_skills": [
+    "/ticket"
+  ]
+}
