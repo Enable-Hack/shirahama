@@ -1,0 +1,42 @@
+{
+  "skill": "incident",
+  "incident_id": "2026-05-05T030352_unscoped",
+  "timestamp": "2026-05-05T03:03:52+09:00",
+  "actor": "ai_human",
+  "inputs": {
+    "window": "2:50-2:59",
+    "window_iso_start": "2026-05-05T02:50:00+09:00",
+    "window_iso_end": "2026-05-05T02:59:00+09:00",
+    "host": "both",
+    "logs_collected": [
+      "bravo_access.log (1677行/SSH残存データ)",
+      "bravo_httpd_err.log",
+      "victor_httpd_err.log"
+    ]
+  },
+  "outputs": {
+    "analyzer_signals": [],
+    "mock_patches": [],
+    "claude_patches": [],
+    "attack_pattern": "unknown",
+    "attack_subpattern": "",
+    "attack_pattern_reasoning": "①SSH未到達(ブース外ネットワーク)のためvictor/bravoの現用ログが取得できなかった。②時間窓02:50-02:59JSTには残存テストログのエントリが0件。③シグナル0件のため既知5カテゴリいずれも成立しない。④/reviewでheadring↔logを4列突合して確定する。",
+    "soc_summary": "時間窓 02:50-02:59 JST に関して、ネットワーク外のため両機への SSH が未到達。/tmp に残存するテスト済ログ (2026-05-02〜03) は時間窓外のため 0 件フィルタ。現時点でシグナルなし → attack_pattern = unknown。本番ブース接続後に /preflight → /incident を再実行し、実ログからシグナルを取得すること。",
+    "customer_questions": [
+      "02:50 頃から具体的にどのような症状が出ていますか? (サイト表示が遅い / 404 になる / メールが届かない / その他)",
+      "victor (Web/Mail) と bravo (DNS/掲示板) のどちらで症状が出ていますか?",
+      "攻撃の前兆として直近 1〜2 時間で気になる動き (不審ログイン通知 / 設定変更 / 外部からの連絡) はありましたか?",
+      "現在、業務ユーザ (10.1.11.x 帯) から「サービスが使えない」報告は何件来ていますか?",
+      "サービスを一時的に停止した場合、業務への影響はどの程度ですか?"
+    ],
+    "preflight_anomalies_count": 0,
+    "network_status": "SSH_UNREACHABLE — ブース外ネットワーク。本番接続または VPN 後に再実行すること"
+  },
+  "verdict": {
+    "status": "⚠️",
+    "summary": "ログ取得: SSH 未到達 (ブース外) / 時間窓内シグナル 0 件 → attack_pattern = unknown。ブース接続後に /preflight → /incident を再実行。次は /review で 4 列突合。"
+  },
+  "next_skills": [
+    "/review --attack-pattern unknown"
+  ]
+}

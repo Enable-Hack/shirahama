@@ -5681,6 +5681,22 @@ dig @10.1.130.1 www.com1.local     # CIC DNS</pre>
 14:30  /new_incident                                  → 2026-05-05_1430_both (新規 id、過去はそのまま)
 ...</pre>
 
+<!-- ════ §2.5. タイムゾーン (致命的、必読) ════ -->
+<h2 style="margin-top:1.5rem;font-size:18px;border-bottom:2px solid var(--rule);padding-bottom:0.3rem;color:var(--warn);">§2.5. ⚠ タイムゾーン (致命的) ─ サーバが UTC でも JST でも対応</h2>
+<div style="background:#FBEFEA;border:2px solid var(--warn);padding:1rem 1.2rem;margin:0.5rem 0;font-size:13px;line-height:1.7;">
+  <strong>大原則</strong>: <strong>ユーザ入力は常に JST</strong> (受電シート / 時間窓引数 / hearing JSON すべて JST)。サーバ側 (Rocky / FreeBSD) は <strong>UTC でも JST でも</strong>あり得るが、<code>/incident</code> が ssh で <code>date +%z</code> を叩いて自動検出 → 入力 JST を各サーバ TZ に変換してからログ検索する。
+  <ul style="margin:0.4rem 0 0.4rem 1.2rem;">
+    <li><strong>OCI Rocky (デモ)</strong> = <code>+0000</code> (UTC、確認済)</li>
+    <li><strong>本番 victor (Rocky)</strong> = ? (大会開始まで未確認、UTC の可能性高い)</li>
+    <li><strong>本番 bravo (FreeBSD)</strong> = ? (同上、cloud image なら UTC が多い)</li>
+  </ul>
+  <strong>事故シナリオ</strong>: ユーザ「12:00 JST 頃から」と聞く → <code>/incident 12:00-12:30</code> を打つ → サーバが UTC なら本来は UTC 03:00-03:30 のログを見る必要がある。<strong>修正前は時刻文字列マッチで偶然 UTC 12:00 のログ (= JST 21:00) を取ってきて 9 時間ズレた別の時間帯のログ取得</strong>になっていた。2026-05-05 修正済。
+  <br><br>
+  <strong>確認方法</strong>: <code>/incident</code> の出力冒頭に「victor TZ: +0000 → ローカル時刻 03:00〜03:30」のように変換結果が出る。これがおかしかったら時刻入力を見直す。
+  <br><br>
+  <strong>受電 JSON</strong>: hearing__*.json の <code>time_window_jst</code> = ユーザ入力 (JST 表記) / <code>time_window_utc</code> = JS 側で自動換算 (UTC 表記)。両方 JSON に入る。
+</div>
+
 <!-- ════ §3. OS 差分 ════ -->
 <h2 style="margin-top:1.5rem;font-size:18px;border-bottom:2px solid var(--rule);padding-bottom:0.3rem;">§3. OS 差分 ─ 本番 (Whiskey) vs デモ (OCI Rocky)</h2>
 
@@ -8865,6 +8881,17 @@ function saveHearingJson() {
       affected_hosts: hosts,
       access_scope: accessScope,
       time_window_jst: win,
+      // ★JST → UTC 換算 (本番サーバが UTC タイムゾーンの場合に /incident や AI が自動でログ検索を変換するためのヒント)
+      time_window_utc: (() => {
+        const m = (win || '').match(/^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/);
+        if (!m) return '';
+        const toUtc = (hh, mm) => {
+          let total = parseInt(hh, 10) * 60 + parseInt(mm, 10) - 9 * 60;
+          if (total < 0) total += 24 * 60;
+          return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
+        };
+        return `${toUtc(m[1], m[2])}-${toUtc(m[3], m[4])}`;
+      })(),
       customer_keywords: keywords,
       free_text: freetext,
       promised_callback_time: callback,

@@ -151,44 +151,67 @@ done
 引数 $1 (例 `13:00-13:30`) を ISO 8601 (JST / +09:00) に変換して jq でフィルタ。
 
 ```bash
-# 引数 $1 = "HH:MM-HH:MM" 形式
+# 引数 $1 = "HH:MM-HH:MM" 形式 (★ ユーザ入力は常に JST)
 WINDOW="$1"
-START_TIME="${WINDOW%-*}:00"
-END_TIME="${WINDOW#*-}:00"
-TODAY="$(TZ=Asia/Tokyo date +%Y-%m-%d)"
+START_HM="${WINDOW%-*}"   # "12:00" (JST)
+END_HM="${WINDOW#*-}"     # "12:30" (JST)
+START_TIME="${START_HM}:00"
+END_TIME="${END_HM}:00"
+TODAY_JST="$(TZ=Asia/Tokyo date +%Y-%m-%d)"
+START="${TODAY_JST}T${START_TIME}+09:00"   # ISO 8601 JST、jq filter 用 (parse_clf 経由は ISO で正しく比較)
+END="${TODAY_JST}T${END_TIME}+09:00"
 
-# ★前提: 入力もログのタイムスタンプも JST (+09:00)
-#   受電時に聞いた時刻 (例「13:30 頃から」) をそのまま `/incident 13:30-13:40` で渡せる。
-#   サーバ側 (Rocky / FreeBSD / OCI) の locale が JST であることを前提にしている。
-#   もしログが UTC だった場合は parse_clf.py / syslog filter 側で吸収する必要がある。
-START="${TODAY}T${START_TIME}+09:00"
-END="${TODAY}T${END_TIME}+09:00"
 echo "─── /incident §2 時間窓フィルタ ───"
-echo "時間窓: $START 〜 $END (JST)"
+echo "ユーザ入力 (JST): $START 〜 $END"
+
+# ★★★ 各サーバの TZ 自動検出 (UTC でも JST でも対応) ★★★
+get_server_tz_offset() {
+  # `date +%z` で +0000 / +0900 等を取得。失敗時は UTC とみなす (cloud image のデフォルト)
+  ssh -o ConnectTimeout=3 -o BatchMode=yes "$1" 'date +%z' 2>/dev/null || echo "+0000"
+}
+jst_to_local_hm() {
+  # JST 時刻 (HH:MM) を指定オフセット (+0000 / +0900 等) の HH:MM に変換
+  local jst_hm="$1"; local off="$2"
+  ${SHIRAHAMA_PY:-python3} -c "
+import sys
+jst_hm='$jst_hm'; off='$off'
+hh, mm = (int(x) for x in jst_hm.split(':'))
+sign = 1 if off[0] == '+' else -1
+oh = int(off[1:3]); om = int(off[3:5])
+total_off_min = sign * (oh*60 + om)        # 対象 TZ の UTC オフセット (分)
+diff = total_off_min - 540                  # JST=540min との差
+total = (hh*60 + mm + diff) % (24*60)
+print(f'{total//60:02d}:{total%60:02d}')
+"
+}
+VICTOR_OFFSET=$(get_server_tz_offset "${SSH_VICTOR:-victor}")
+BRAVO_OFFSET=$(get_server_tz_offset "${SSH_BRAVO:-bravo}")
+START_VICTOR_HM=$(jst_to_local_hm "$START_HM" "$VICTOR_OFFSET")
+END_VICTOR_HM=$(jst_to_local_hm "$END_HM"   "$VICTOR_OFFSET")
+START_BRAVO_HM=$(jst_to_local_hm "$START_HM" "$BRAVO_OFFSET")
+END_BRAVO_HM=$(jst_to_local_hm "$END_HM"   "$BRAVO_OFFSET")
+TODAY_VICTOR=$(ssh -o ConnectTimeout=3 -o BatchMode=yes "${SSH_VICTOR:-victor}" "LC_ALL=C date '+%b %e'" 2>/dev/null || LC_ALL=C TZ=Asia/Tokyo date +'%b %e')
+TODAY_BRAVO=$(ssh -o ConnectTimeout=3 -o BatchMode=yes "${SSH_BRAVO:-bravo}" "LC_ALL=C date '+%b %e'" 2>/dev/null || LC_ALL=C TZ=Asia/Tokyo date +'%b %e')
+
+echo "  victor TZ        : ${VICTOR_OFFSET} → ローカル時刻 ${START_VICTOR_HM} 〜 ${END_VICTOR_HM} (今日=${TODAY_VICTOR})"
+echo "  bravo  TZ        : ${BRAVO_OFFSET} → ローカル時刻 ${START_BRAVO_HM} 〜 ${END_BRAVO_HM} (今日=${TODAY_BRAVO})"
 
 # nginx access_log → /tmp/access.log (両機合流)
-# ★重要: ファイル名は /tmp/access.log にすること
-#   agent/analyzer.py の analyze_nginx() は "access.log" のみ拾う
+# parse_clf.py が ISO 8601 (UTC 9 オフセット込み) に正規化するので ISO で filter
 {
     [ -s /tmp/victor_access.log ] && python scripts/preprocess/parse_clf.py /tmp/victor_access.log
     [ -s /tmp/bravo_access.log ]  && python scripts/preprocess/parse_clf.py /tmp/bravo_access.log
 } | jq --arg s "$START" --arg e "$END" 'select(.timestamp >= $s and .timestamp <= $e)' \
   > /tmp/access.log
-
 echo "  /tmp/access.log: $(wc -l < /tmp/access.log) 行 (フィルタ後、両機合流)"
 
-# secure / named / maillog / auth は syslog 形式 (年なし)。
-# 「今日の月日 + HH:MM 範囲」で絞る (古い brute 痕跡が時間窓内のシグナルに混ざらないように)
-# analyzer.py は victor_*.log / bravo_*.log を両方自動で読む (run_with_unmatched の fname パターン参照)
-START_HM="${WINDOW%-*}"
-END_HM="${WINDOW#*-}"
-TODAY_PREFIX="$(LC_ALL=C TZ=Asia/Tokyo date +'%b %e')"   # "May  3" (BSD/GNU 共通の space-padded 形式 = syslog と同じ。LC_ALL=C で ja_JP locale を回避 / TZ で JST 固定)
-
+# syslog 形式 (secure / named / maillog / auth / messages) はサーバローカル時刻で記録される。
+# 各サーバの TZ で変換した HH:MM + その TZ の今日プレフィックスで filter する。
 filter_syslog() {
-    local f="$1"
+    local f="$1"; local today="$2"; local start="$3"; local end="$4"
     [ ! -f "$f" ] && return
     local before=$(wc -l < "$f")
-    awk -v today="$TODAY_PREFIX" -v start="$START_HM" -v end="$END_HM" '
+    awk -v today="$today" -v start="$start" -v end="$end" '
         index($0, today) == 1 {
             hm = substr($3, 1, 5)
             if (hm >= start && hm <= end) print
@@ -196,12 +219,28 @@ filter_syslog() {
     echo "  $f: $before → $(wc -l < $f) 行 (時間窓フィルタ後)"
 }
 
-# 両機の syslog 系を時間窓フィルタ
-for f in /tmp/victor_secure.log /tmp/victor_maillog.log /tmp/victor_messages.log \
-         /tmp/bravo_auth.log    /tmp/bravo_named.log    /tmp/bravo_maillog.log /tmp/bravo_messages.log; do
-    filter_syslog "$f"
+# victor 由来は victor TZ で、bravo 由来は bravo TZ で fitler
+for f in /tmp/victor_secure.log /tmp/victor_maillog.log /tmp/victor_messages.log; do
+    filter_syslog "$f" "$TODAY_VICTOR" "$START_VICTOR_HM" "$END_VICTOR_HM"
 done
+for f in /tmp/bravo_auth.log /tmp/bravo_named.log /tmp/bravo_maillog.log /tmp/bravo_messages.log; do
+    filter_syslog "$f" "$TODAY_BRAVO" "$START_BRAVO_HM" "$END_BRAVO_HM"
+done
+
+# JSON 出力用に env として保持 (helper / Mock / Claude が使う)
+export TIME_WINDOW_JST_START="$START"
+export TIME_WINDOW_JST_END="$END"
+export VICTOR_TZ_OFFSET="$VICTOR_OFFSET"
+export BRAVO_TZ_OFFSET="$BRAVO_OFFSET"
+export VICTOR_LOCAL_WINDOW="${START_VICTOR_HM}-${END_VICTOR_HM}"
+export BRAVO_LOCAL_WINDOW="${START_BRAVO_HM}-${END_BRAVO_HM}"
 ```
+
+**TZ 自動対応の仕組み (本番 Rocky / FreeBSD / デモ OCI どれでも動く):**
+- ssh で `date +%z` を叩いて各サーバの UTC オフセットを取得 (`+0000` / `+0900` 等)
+- ユーザ入力 (JST) を python で各サーバ TZ に変換
+- TODAY プレフィックスもサーバ側で `date +'%b %e'` を取得 (日付跨ぎ吸収)
+- ssh failed → UTC とみなす (cloud image のデフォルト) → 安全側に倒す
 
 ### 3. analyzer 起動
 
